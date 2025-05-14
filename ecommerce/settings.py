@@ -146,7 +146,7 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 from datetime import timedelta
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=120),  # 1 hora en segundos
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=11120),  # 1 hora en segundos
     # 'REFRESH_TOKEN_LIFETIME': 604800,  # 7 días en segundos
     # 'REFRESH_TOKEN_LIFETIME': 604800,  # 7 días en segundos
 }

@@ -1,100 +1,286 @@
+# carts/views.py
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from .models import Cart, CartItem, Quote, Product
-from .serializers import CartSerializer, CartItemSerializer, QuoteSerializer
+from .models import Cart, CartItem, Quote, QuoteItem
+from products.models import Product
+from .serializers import CartSerializer, CartItemSerializer, QuoteSerializer, QuoteItemSerializer # Importa QuoteItemSerializer
 from rest_framework.permissions import IsAuthenticated
+from django.db import transaction # Importar para transacciones atómicas
+from decimal import Decimal
 
 class CartViewSet(viewsets.ModelViewSet):
     serializer_class = CartSerializer
     permission_classes = [IsAuthenticated]
-    # permission_classes = [permissions.AllowAny]
-    # permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """
+        Retorna el carrito del usuario actual. Si el usuario no tiene carrito, crea uno.
+        Usamos OneToOneField, así que get_or_create con filter es seguro.
+        """
         user = self.request.user
+        # Usamos OneToOneField, así que get_or_create es el método directo y asegura unicidad.
         cart, created = Cart.objects.get_or_create(user=user)
-        return Cart.objects.filter(user=user)
+        # Devolvemos un queryset que contiene solo el carrito del usuario para que el ViewSet funcione
+        return Cart.objects.filter(user=user) # Filtrar por usuario para asegurar el carrito correcto
 
-    @action(detail=True, methods=['post'])
-    def add_item(self, request, pk=None):
-        # cart = self.get_object()
+    # Lista el carrito del usuario (GET /api/carts/)
+    def list(self, request, *args, **kwargs):
+         # get_queryset ya obtiene o crea el carrito
         cart = self.get_queryset().first()
+        if not cart:
+             # Esto solo ocurriría si get_queryset no pudiera obtener/crear, improbable con OneToOne
+             return Response({"error": "Could not retrieve or create user cart."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        serializer = self.get_serializer(cart)
+        return Response(serializer.data)
+
+    # Recupera un carrito específico (no necesario con OneToOne para el usuario actual)
+    # def retrieve(self, request, pk=None):
+    #     # Con OneToOne, el PK del carrito no es relevante para obtener el carrito del usuario actual
+    #     # Podrías redefinir esto si quieres que admins puedan ver otros carritos por PK
+    #     return super().retrieve(request, *args, **kwargs)
+
+
+    @action(detail=False, methods=['post']) # Cambiamos a detail=False para operar en el carrito del usuario directamente
+    def add_item(self, request):
+        """
+        Agrega o actualiza un producto en el carrito del usuario autenticado.
+        Requiere 'product_id' y 'quantity' en el cuerpo de la solicitud.
+        """
+        cart = self.get_queryset().first() # Obtenemos el carrito del usuario autenticado
+
         product_id = request.data.get('product_id')
-        quantity = int(request.data.get('quantity', 1))
+        quantity = int(request.data.get('quantity', 0)) # Cantidad esperada
+
+        if quantity <= 0:
+             return Response({"error": "Quantity must be positive."}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             product = Product.objects.get(pk=product_id)
         except Product.DoesNotExist:
             return Response({"error": "Product not found"}, status=status.HTTP_400_BAD_REQUEST)
 
-        cart_item, created = CartItem.objects.get_or_create(cart=cart, product=product, defaults={'quantity': quantity})
-        if product.stock < (quantity + cart_item.quantity):
-            return Response({"error": f"Insufficient stock.  Only {product.stock} available."}, status=status.HTTP_400_BAD_REQUEST)
+        # Validar stock antes de añadir/actualizar en el carrito
+        # Si el item ya existe, sumamos la cantidad existente a la nueva cantidad para la validación
+        existing_item = cart.items.filter(product=product).first()
+        total_quantity_requested = quantity + (existing_item.quantity if existing_item else 0)
 
+        if product.stock < total_quantity_requested:
+             return Response({"error": f"Insufficient stock.  Only {product.stock} available for {product.name} (already in cart: {existing_item.quantity if existing_item else 0})."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Usamos get_or_create para manejar si el item ya está en el carrito
+        cart_item, created = CartItem.objects.get_or_create(cart=cart, product=product, defaults={'quantity': quantity})
         if not created:
-            cart_item.quantity += quantity
+            cart_item.quantity = total_quantity_requested # Actualiza la cantidad total
             cart_item.save()
 
         serializer = CartItemSerializer(cart_item)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.data, status=status.HTTP_200_OK) # Usamos 200 OK para actualizar, 201 Created para crear
 
-    @action(detail=True, methods=['delete'], url_path='remove_item/(?P<item_id>\d+)')
-    def remove_item(self, request, pk=None, item_id=None):
-        cart = self.get_object()
+    @action(detail=False, methods=['delete'], url_path='remove_item/(?P<item_id>\d+)')
+    def remove_item(self, request, item_id=None):
+         """
+         Elimina un item específico del carrito del usuario autenticado.
+         Requiere el 'item_id' en la URL.
+         """
+         cart = self.get_queryset().first() # Obtenemos el carrito del usuario autenticado
+         if not cart:
+             return Response({"error": "User does not have a cart."}, status=status.HTTP_404_NOT_FOUND)
 
+         try:
+             # Aseguramos que el item pertenece al carrito del usuario autenticado
+             cart_item = CartItem.objects.get(cart=cart, pk=item_id)
+         except CartItem.DoesNotExist:
+             return Response({"error": "Item not found in cart or does not belong to this cart."}, status=status.HTTP_404_NOT_FOUND)
+
+         cart_item.delete()
+         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=['post']) # Cambiamos a detail=False
+    def create_quote(self, request):
+        """
+        Crea una cotización a partir del carrito actual del usuario autenticado.
+        Valida stock, crea QuoteItems, calcula total, descuenta stock y vacía el carrito.
+        """
+        cart = self.get_queryset().first() # Obtenemos el carrito del usuario autenticado
+        if not cart:
+             return Response({"error": "User does not have a cart or cart is empty."}, status=status.HTTP_404_NOT_FOUND)
+
+        cart_items = cart.items.all()
+
+        if not cart_items.exists():
+             return Response({"error": "Cart is empty. Cannot create a quote."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Usamos una transacción atómica para asegurar que si algo falla,
+        # todos los cambios (creación de quote/items, descuento de stock) se revierten.
         try:
-            cart_item = CartItem.objects.get(cart=cart, pk=item_id)
-        except CartItem.DoesNotExist:
-            return Response({"error": "Item not found in cart."}, status=status.HTTP_404_NOT_FOUND)
+            with transaction.atomic():
+                # 1. Crear la cotización (estado inicial 'pending', total 0 por ahora)
+                # Se asocia al usuario y opcionalmente al carrito que la originó.
+                quote = Quote.objects.create(
+                    user=request.user,
+                    cart=cart, # Guardamos la referencia al carrito que originó la cotización
+                    status='pending',
+                    total=Decimal('0.00') # Inicializar con Decimal
+                )
 
-        cart_item.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+                # 2. Crear QuoteItems y calcular el total
+                quote_total = Decimal('0.00') # Usar Decimal para el total
+                quote_items_to_create = []
 
-    @action(detail=True, methods=['post'])
-    def create_quote(self, request, pk=None):
-        cart = self.get_object()
+                for item in cart_items:
+                    product = item.product
 
-        # Validar que el stock sea suficiente para todos los items
-        for item in cart.items.all():
-            if item.product.stock < item.quantity:
-                return Response({"error": f"Insufficient stock for {item.product.name}"}, status=status.HTTP_400_BAD_REQUEST)
+                    # Asegurarse de que el producto tiene precio y descuento válidos
+                    if product.sale_price is None or product.discount is None:
+                        # Si esta validación falla, la transacción se revertirá.
+                        raise ValueError(f"Product '{product.name}' (ID: {product.id}) has missing price or discount information.")
 
-        # Calcular el total de la cotización
-        total = 0
-        for item in cart.items.all():
-            total += item.product.sale_price * item.quantity
+                    # Calcular el precio final del item (aplicando descuento individual del producto)
+                    # Asegurarse de que product.discount es un Decimal
+                    price_at_quote = product.sale_price * (Decimal('1.00') - (product.discount / Decimal('100.00')))
 
-        quote = Quote.objects.create(cart=cart, total=total)
+                    # Crear la instancia de QuoteItem, no la guardes aún si usas bulk_create
+                    quote_item_instance = QuoteItem(
+                        quote=quote,         # Asociar con la cotización recién creada
+                        product=product,
+                        quantity=item.quantity,
+                        price_at_quote=price_at_quote
+                    )
+                    quote_items_to_create.append(quote_item_instance)
+                    
+                    # Sumar al total usando la propiedad subtotal del QuoteItem (que usa price_at_quote)
+                    # Esto requiere que la instancia tenga price_at_quote seteado.
+                    quote_total += quote_item_instance.subtotal # Llama a la propiedad @property subtotal
+
+                # 3. Bulk create QuoteItems para eficiencia (esto los guarda en la BD)
+                QuoteItem.objects.bulk_create(quote_items_to_create)
+
+                # 4. Actualizar el total en la cotización
+                quote.total = quote_total
+                quote.save() # Guardar la cotización con el total actualizado
+
+                # 5. Vaciar el carrito después de generar la cotización
+                cart_items.delete()
+
+        except ValueError as e: # Capturar el ValueError que levantamos antes
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e: # Capturar cualquier otra excepción durante la transacción
+            # Log el error real para depuración interna
+            print(f"Error creating quote: {str(e)}") # Considera usar logging.error()
+            return Response({"error": "An unexpected error occurred while creating the quote."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Si la transacción fue exitosa, serializar y retornar la cotización
+        # El QuoteSerializer debería tener `items = QuoteItemSerializer(many=True, read_only=True)`
+        # para que los items recién creados se incluyan.
         serializer = QuoteSerializer(quote)
-
-        #Descontar stock (puedes mover esto a una tarea asíncrona si lo prefieres)
-        for item in cart.items.all():
-            product = item.product
-            product.stock -= item.quantity
-            product.save() # Guarda la modificación del stock
-
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
 
 class QuoteViewSet(viewsets.ModelViewSet):
     serializer_class = QuoteSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        """
+        Permite a los usuarios ver solo sus propias cotizaciones.
+        Permite a los administradores ver todas las cotizaciones.
+        Prefetch related items for efficiency.
+        """
+        queryset = Quote.objects.all().select_related('user').prefetch_related('items') # Mejora el rendimiento
+
         if self.request.user.is_staff:
-            return Quote.objects.all()
+            # Los administradores pueden ver todas las cotizaciones
+            return queryset.order_by('-created_at') # Ordenar por fecha de creación descendente
         else:
-            return Quote.objects.filter(cart__user=self.request.user)
+            # Los usuarios normales solo ven las cotizaciones asociadas a ellos
+            return queryset.filter(user=self.request.user).order_by('-created_at')
 
     @action(detail=True, methods=['post'])
     def finalize_sale(self, request, pk=None):
+        """
+        Finaliza la venta de una cotización (cambia el estado a 'paid').
+        Solo accesible para administradores.
+        """
         if not self.request.user.is_staff:
-            return Response({"error": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"error": "Unauthorized. Only administrators can finalize sales."}, status=status.HTTP_403_FORBIDDEN)
 
-        quote = self.get_object()
+        try:
+            # Usamos get_object() que ya aplica los permisos (aunque para admin permite todo)
+            # Aseguramos que obtenemos la cotización correcta
+            quote = self.get_object()
+        except Quote.DoesNotExist:
+             return Response({"error": "Quote not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Validar el estado actual de la cotización
         if quote.status != 'pending':
-            return Response({"error": "Quote is not pending."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": f"Quote is not pending. Current status: {quote.status}"}, status=status.HTTP_400_BAD_REQUEST)
 
-        quote.status = 'paid'
-        quote.save()
+        # Usamos una transacción atómica para la actualización del estado
+        with transaction.atomic():
+            for item in quote.items.all(): # Iterar sobre los QuoteItems de la cotización
+                product = Product.objects.select_for_update().get(pk=item.product.pk) # Bloqueo para concurrencia
+                if product.stock < item.quantity:
+                    # No hay suficiente stock para este item.
+                    # Revertir la transacción y devolver un error.
+                    transaction.set_rollback(True) # Asegura que la transacción se revierte
+                    return Response(
+                        {"error": f"Insufficient stock to finalize sale for product '{product.name}'. Available: {product.stock}, Requested in quote: {item.quantity}"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                # Si hay stock, descontarlo
+                product.stock -= item.quantity
+                product.save()
+            quote.status = 'paid'
+            quote.save()
+            # Si necesitas hacer algo más al finalizar la venta (ej. generar factura, enviar correo)
+            # agrégalo aquí dentro de la transacción.
 
-        return Response({"message": "Sale finalized successfully."}, status=status.HTTP_200_OK)
+        # No es necesario descontar stock aquí, se hizo en create_quote.
+        # Si el stock solo se descuenta al finalizar la venta, mueve esa lógica aquí.
+        # PERO, eso significa que el stock no está reservado durante el estado 'pending',
+        # lo cual puede llevar a problemas de sobreventa. Descontar al crear la quote
+        # (o al menos reservar de alguna forma) es mejor para control de inventario.
+
+        serializer = QuoteSerializer(quote) # Serializar la cotización actualizada
+        return Response({"message": f"Sale for quote {quote.pk} finalized successfully. Status changed to paid, 'quote': {serializer.data}"}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'])
+    def cancel_quote(self, request, pk=None):
+        """
+        Cancela una cotización y restaura el stock.
+        Puede ser accesible para el usuario (si está pendiente) o para el admin.
+        """
+        # Quien puede cancelar? Usuario si está pendiente? Admin siempre?
+        # Aquí permitiremos al admin cancelar cualquier cotización,
+        # y al usuario cancelar sus propias cotizaciones si están pendientes.
+
+        try:
+            # get_object aplica el filtro por usuario si no es admin
+            quote = self.get_object()
+        except Quote.DoesNotExist:
+            return Response({"error": "Quote not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Validar quién está cancelando y el estado
+        if not self.request.user.is_staff and quote.user != self.request.user:
+            return Response({"error": "Unauthorized to cancel this quote."}, status=status.HTTP_403_FORBIDDEN)
+
+        if quote.status not in ['pending']: # Solo se pueden cancelar cotizaciones pendientes
+            return Response({"error": f"Quote cannot be cancelled. Current status: {quote.status}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            # Cambiar el estado a 'cancelled'
+            quote.status = 'cancelled'
+            quote.save()
+
+            # Restaurar el stock que fue descontado al crear la cotización
+            # Solo si el stock fue descontado al crear la cotización (como lo implementamos)
+            for item in quote.items.all():
+                product = item.product
+                # Opcional: usar select_for_update() si hay mucha concurrencia en restaurar stock
+                product.stock += item.quantity
+                product.save()
+
+        serializer = QuoteSerializer(quote)
+        return Response({"message": f"Quote {quote.pk} cancelled successfully. Stock restored.", "quote": serializer.data}, status=status.HTTP_200_OK)
