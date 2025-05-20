@@ -3,12 +3,12 @@ from .models import Category, Subcategory, Product, ProductImage, Tag
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
-    list_display = ('name',)
+    list_display = ('id','name',)
     search_fields = ('name',)
 
 @admin.register(Subcategory)
 class SubcategoryAdmin(admin.ModelAdmin):
-    list_display = ('name', 'category')
+    list_display = ('id', 'name', 'category__id' ,'category')
     list_filter = ('category',)
     search_fields = ('name',)
 
@@ -23,7 +23,7 @@ class ProductImageInline(admin.TabularInline):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ('name', 'category', 'subcategory', 'sale_price', 'stock')
+    list_display = ('name', 'category', 'subcategory', 'sale_price', 'stock', 'discount')
     list_filter = ('category', 'subcategory', 'tags')
     search_fields = ('name', 'description')
     inlines = [ProductImageInline]

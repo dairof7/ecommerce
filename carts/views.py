@@ -8,10 +8,44 @@ from .serializers import CartSerializer, CartItemSerializer, QuoteSerializer, Qu
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction # Importar para transacciones atómicas
 from decimal import Decimal
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 
 class CartViewSet(viewsets.ModelViewSet):
     serializer_class = CartSerializer
     permission_classes = [IsAuthenticated]
+
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='id', description='A unique integer value identifying this cart.', required=True, type=OpenApiTypes.INT, location=OpenApiParameter.PATH)
+        ]
+    )
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='id', description='A unique integer value identifying this cart.', required=True, type=OpenApiTypes.INT, location=OpenApiParameter.PATH)
+        ]
+    )
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='id', description='A unique integer value identifying this cart.', required=True, type=OpenApiTypes.INT, location=OpenApiParameter.PATH)
+        ]
+    )
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='id', description='A unique integer value identifying this cart.', required=True, type=OpenApiTypes.INT, location=OpenApiParameter.PATH)
+        ]
+    )
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
+
 
     def get_queryset(self):
         """
@@ -26,11 +60,11 @@ class CartViewSet(viewsets.ModelViewSet):
 
     # Lista el carrito del usuario (GET /api/carts/)
     def list(self, request, *args, **kwargs):
-         # get_queryset ya obtiene o crea el carrito
+        # get_queryset ya obtiene o crea el carrito
         cart = self.get_queryset().first()
         if not cart:
-             # Esto solo ocurriría si get_queryset no pudiera obtener/crear, improbable con OneToOne
-             return Response({"error": "Could not retrieve or create user cart."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            # Esto solo ocurriría si get_queryset no pudiera obtener/crear, improbable con OneToOne
+            return Response({"error": "Could not retrieve or create user cart."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         serializer = self.get_serializer(cart)
         return Response(serializer.data)
@@ -54,7 +88,7 @@ class CartViewSet(viewsets.ModelViewSet):
         quantity = int(request.data.get('quantity', 0)) # Cantidad esperada
 
         if quantity <= 0:
-             return Response({"error": "Quantity must be positive."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "Quantity must be positive."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             product = Product.objects.get(pk=product_id)
@@ -67,7 +101,7 @@ class CartViewSet(viewsets.ModelViewSet):
         total_quantity_requested = quantity + (existing_item.quantity if existing_item else 0)
 
         if product.stock < total_quantity_requested:
-             return Response({"error": f"Insufficient stock.  Only {product.stock} available for {product.name} (already in cart: {existing_item.quantity if existing_item else 0})."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": f"Insufficient stock.  Only {product.stock} available for {product.name} (already in cart: {existing_item.quantity if existing_item else 0})."}, status=status.HTTP_400_BAD_REQUEST)
 
         # Usamos get_or_create para manejar si el item ya está en el carrito
         cart_item, created = CartItem.objects.get_or_create(cart=cart, product=product, defaults={'quantity': quantity})
@@ -78,24 +112,24 @@ class CartViewSet(viewsets.ModelViewSet):
         serializer = CartItemSerializer(cart_item)
         return Response(serializer.data, status=status.HTTP_200_OK) # Usamos 200 OK para actualizar, 201 Created para crear
 
-    @action(detail=False, methods=['delete'], url_path='remove_item/(?P<item_id>\d+)')
+    @action(detail=False, methods=['delete'], url_path=r'remove_item/(?P<item_id>\d+)')
     def remove_item(self, request, item_id=None):
-         """
-         Elimina un item específico del carrito del usuario autenticado.
-         Requiere el 'item_id' en la URL.
-         """
-         cart = self.get_queryset().first() # Obtenemos el carrito del usuario autenticado
-         if not cart:
-             return Response({"error": "User does not have a cart."}, status=status.HTTP_404_NOT_FOUND)
+        """
+        Elimina un item específico del carrito del usuario autenticado.
+        Requiere el 'item_id' en la URL.
+        """
+        cart = self.get_queryset().first() # Obtenemos el carrito del usuario autenticado
+        if not cart:
+            return Response({"error": "User does not have a cart."}, status=status.HTTP_404_NOT_FOUND)
 
-         try:
-             # Aseguramos que el item pertenece al carrito del usuario autenticado
-             cart_item = CartItem.objects.get(cart=cart, pk=item_id)
-         except CartItem.DoesNotExist:
-             return Response({"error": "Item not found in cart or does not belong to this cart."}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            # Aseguramos que el item pertenece al carrito del usuario autenticado
+            cart_item = CartItem.objects.get(cart=cart, pk=item_id)
+        except CartItem.DoesNotExist:
+            return Response({"error": "Item not found in cart or does not belong to this cart."}, status=status.HTTP_404_NOT_FOUND)
 
-         cart_item.delete()
-         return Response(status=status.HTTP_204_NO_CONTENT)
+        cart_item.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=['post']) # Cambiamos a detail=False
     def create_quote(self, request):
@@ -105,12 +139,12 @@ class CartViewSet(viewsets.ModelViewSet):
         """
         cart = self.get_queryset().first() # Obtenemos el carrito del usuario autenticado
         if not cart:
-             return Response({"error": "User does not have a cart or cart is empty."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": "User does not have a cart or cart is empty."}, status=status.HTTP_404_NOT_FOUND)
 
         cart_items = cart.items.all()
 
         if not cart_items.exists():
-             return Response({"error": "Cart is empty. Cannot create a quote."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "Cart is empty. Cannot create a quote."}, status=status.HTTP_400_BAD_REQUEST)
 
         # Usamos una transacción atómica para asegurar que si algo falla,
         # todos los cambios (creación de quote/items, descuento de stock) se revierten.
@@ -132,22 +166,18 @@ class CartViewSet(viewsets.ModelViewSet):
                 for item in cart_items:
                     product = item.product
 
-                    # Asegurarse de que el producto tiene precio y descuento válidos
-                    if product.sale_price is None or product.discount is None:
-                        # Si esta validación falla, la transacción se revertirá.
-                        raise ValueError(f"Product '{product.name}' (ID: {product.id}) has missing price or discount information.")
+                    # Usar la propiedad final_sale_price del modelo Product
+                    price_at_quote = product.final_sale_price 
 
-                    # Calcular el precio final del item (aplicando descuento individual del producto)
-                    # Asegurarse de que product.discount es un Decimal
-                    price_at_quote = product.sale_price * (Decimal('1.00') - (product.discount / Decimal('100.00')))
-
-                    # Crear la instancia de QuoteItem, no la guardes aún si usas bulk_create
                     quote_item_instance = QuoteItem(
-                        quote=quote,         # Asociar con la cotización recién creada
+                        quote=quote,
                         product=product,
                         quantity=item.quantity,
-                        price_at_quote=price_at_quote
+                        price_at_quote=price_at_quote # Este es el precio con todos los descuentos aplicados
                     )
+                    quote_items_to_create.append(quote_item_instance)
+                    quote_total += quote_item_instance.subtotal # subtotal usará este price_at_quote
+
                     quote_items_to_create.append(quote_item_instance)
                     
                     # Sumar al total usando la propiedad subtotal del QuoteItem (que usa price_at_quote)
@@ -182,6 +212,41 @@ class QuoteViewSet(viewsets.ModelViewSet):
     serializer_class = QuoteSerializer
     permission_classes = [IsAuthenticated]
 
+
+
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='id', description='A unique integer value identifying this cart.', required=True, type=OpenApiTypes.INT, location=OpenApiParameter.PATH)
+        ]
+    )
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='id', description='A unique integer value identifying this cart.', required=True, type=OpenApiTypes.INT, location=OpenApiParameter.PATH)
+        ]
+    )
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='id', description='A unique integer value identifying this cart.', required=True, type=OpenApiTypes.INT, location=OpenApiParameter.PATH)
+        ]
+    )
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='id', description='A unique integer value identifying this cart.', required=True, type=OpenApiTypes.INT, location=OpenApiParameter.PATH)
+        ]
+    )
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
+
+
     def get_queryset(self):
         """
         Permite a los usuarios ver solo sus propias cotizaciones.
@@ -211,7 +276,7 @@ class QuoteViewSet(viewsets.ModelViewSet):
             # Aseguramos que obtenemos la cotización correcta
             quote = self.get_object()
         except Quote.DoesNotExist:
-             return Response({"error": "Quote not found."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": "Quote not found."}, status=status.HTTP_404_NOT_FOUND)
 
         # Validar el estado actual de la cotización
         if quote.status != 'pending':

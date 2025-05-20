@@ -3,8 +3,9 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from .serializers import UserSerializer, UserProfileSerializer
 from .models import UserProfile
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
+User = get_user_model()
 
 class UserCreate(generics.CreateAPIView):
     queryset = User.objects.all()

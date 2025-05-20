@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from products.models import Product
+from decimal import Decimal
 
 User = get_user_model()
 
@@ -59,8 +60,10 @@ class QuoteItem(models.Model):
     price_at_quote = models.DecimalField(max_digits=10, decimal_places=2)
 
     @property
-    def subtotal(self):
-        return self.quantity * self.price_at_quote
+    def subtotal(self) -> Decimal:
+
+        # Usa la propiedad final_sale_price del producto asociado
+        return self.product.final_sale_price * self.quantity
 
     def __str__(self):
         return f"{self.quantity} x {self.product.name} in Quote {self.quote.id}"

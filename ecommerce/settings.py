@@ -88,7 +88,7 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 10,
+    'PAGE_SIZE': 20,
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
@@ -150,3 +150,5 @@ SIMPLE_JWT = {
     # 'REFRESH_TOKEN_LIFETIME': 604800,  # 7 días en segundos
     # 'REFRESH_TOKEN_LIFETIME': 604800,  # 7 días en segundos
 }
+
+AUTH_USER_MODEL = 'accounts.CustomUser'
