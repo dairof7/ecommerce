@@ -8,8 +8,8 @@ class CustomUser(AbstractUser):
     email = models.EmailField(_('email address'), unique=True) # Hacerlo único es una buena práctica
 
     # Si quieres usar email como USERNAME_FIELD:
-    # USERNAME_FIELD = 'email'
-    # REQUIRED_FIELDS = ['username'] # username seguiría siendo necesario si no lo eliminas
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = ['username'] # username seguiría siendo necesario si no lo eliminas
     # O si solo quieres email como campo principal y username opcional o no usado para login:
     # USERNAME_FIELD = 'email'
     # REQUIRED_FIELDS = [] # Si el username ya no es necesario para crear el usuario

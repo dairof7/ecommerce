@@ -261,6 +261,8 @@ class QuoteViewSet(viewsets.ModelViewSet):
         else:
             # Los usuarios normales solo ven las cotizaciones asociadas a ellos
             return queryset.filter(user=self.request.user).order_by('-created_at')
+        # queryset = Quote.objects.all()
+        # return queryset
 
     @action(detail=True, methods=['post'])
     def finalize_sale(self, request, pk=None):

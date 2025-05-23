@@ -2,20 +2,40 @@ from decimal import Decimal
 from rest_framework import serializers
 from .models import Category, Subcategory, Product, ProductImage, Tag
 
+
+
+
+
 class CategorySerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(read_only=True)
+    # Si se requiere permitir la subida de imágenes a través de la API:
+    # image_upload = serializers.ImageField(source='image', write_only=True, required=False)
     class Meta:
         model = Category
-        fields = '__all__'
+        fields = ['id', 'name', 'image', 'description'] # Añadir image y description
+        # Si se usa image_upload:
+        # fields = ['id', 'name', 'image', 'description', 'image_upload']
+        # fields = '__all__'
 
 class SubcategorySerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(read_only=True)
+    category_id = serializers.PrimaryKeyRelatedField(read_only=True, source='category.id')
     class Meta:
         model = Subcategory
-        fields = '__all__'
+        fields = ['id', 'name', 'image', 'description', 'category_id']
+        # fields = '__all__'
 
 class TagSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tag
-        fields = '__all__'
+        fields = ['id', 'name']
+
+# Nuevo Serializador para Tags con conteo de productos
+class RelevantTagSerializer(TagSerializer): # Hereda de TagSerializer
+    product_count = serializers.IntegerField(read_only=True)
+
+    class Meta(TagSerializer.Meta): # Hereda Meta de TagSerializer
+        fields = TagSerializer.Meta.fields + ['product_count']
 
 class ProductImageSerializer(serializers.ModelSerializer):
     class Meta:
@@ -28,7 +48,6 @@ class ProductSerializer(serializers.ModelSerializer):
     subcategory = SubcategorySerializer(read_only=True) # Para mostrar el objeto subcategoría completo
     images = ProductImageSerializer(many=True, read_only=True)
     tags = TagSerializer(many=True, read_only=True) # Para mostrar los objetos tag completos
-
 
     final_sale_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     # Opcional: mostrar el precio original y el porcentaje de descuento aplicado
@@ -67,6 +86,7 @@ class ProductSerializer(serializers.ModelSerializer):
             'final_sale_price',         # Precio final a pagar
             'has_discount',             # Booleano para UI
             'stock',
+            'is_featured',
             'created_at', 'updated_at',
             'category', 'subcategory', 'images', 'tags',
             'category_id', 'subcategory_id', 'tag_ids'

@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     'inventory',
     'carts',
     'sales',
+    'marketing',
     'django_filters', # Para filtros avanzados
     'drf_spectacular',
     'rest_framework_simplejwt.token_blacklist',
@@ -67,7 +68,9 @@ WSGI_APPLICATION = 'ecommerce.wsgi.application'
 
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000", #El dominio de tu fronted, por ejemplo.
+    "http://localhost:5173", # Para Vite
+    "http://localhost:3000", # Para Create React App (si lo usaras)
+    # Añade otros orígenes si es necesario
 ]
 
 # Database
@@ -88,7 +91,7 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 20,
+    'PAGE_SIZE': 12,
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 

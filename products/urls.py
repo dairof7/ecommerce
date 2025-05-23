@@ -5,10 +5,11 @@ from . import views
 router = routers.DefaultRouter()
 router.register(r'categories', views.CategoryViewSet)
 router.register(r'subcategories', views.SubcategoryViewSet)
-router.register(r'products', views.ProductViewSet)
 router.register(r'product-images', views.ProductImageViewSet)
 router.register(r'tags', views.TagViewSet)
+router.register(r'', views.ProductViewSet)
 
 urlpatterns = [
+    path('relevant-tags/', views.RelevantTagsView.as_view(), name='relevant-tags-list'),
     path('', include(router.urls)),
 ]

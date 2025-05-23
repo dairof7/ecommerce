@@ -125,10 +125,10 @@ class Command(BaseCommand):
                 product.tags.set(tags_for_product)
 
                 # Opcional: Crear imágenes de producto (requiere manejo de archivos)
-                # for _ in range(random.randint(1, 3)):
-                #     # Aquí necesitarías una imagen real o un placeholder
-                #     # ProductImage.objects.create(product=product, image='path/to/placeholder.jpg', alt_text=f"Imagen de {product.name}")
-                #     pass
+                for _ in range(random.randint(1, 3)):
+                    # Aquí necesitarías una imagen real o un placeholder
+                    ProductImage.objects.create(product=product, image='products/3.png', alt_text=f"Imagen de {product.name}")
+                    # pass
                 self.stdout.write(f'  Created product: {product.name}')
             else:
                 self.stdout.write(self.style.WARNING(
@@ -142,40 +142,40 @@ class Command(BaseCommand):
             
             
         self.stdout.write('Creating sample users...')
-        num_users_to_create = 5
-        for i in range(num_users_to_create):
-            # Generar datos únicos para cada intento
-            # Usar un sufijo para asegurar unicidad si Faker genera duplicados rápidamente
-            base_username = fake.user_name().lower().replace(' ', '_')
-            username = f"{base_username}_{i}"
-            email = fake.email() # Faker debería generar emails únicos la mayoría de las veces
-            # Si usas email como USERNAME_FIELD y es unique=True, asegúrate de que email sea único aquí.
-            # email = f"user{i}_{fake.domain_name()}" # Una forma de asegurar unicidad del email
+        # num_users_to_create = 5
+        # for i in range(num_users_to_create):
+        #     # Generar datos únicos para cada intento
+        #     # Usar un sufijo para asegurar unicidad si Faker genera duplicados rápidamente
+        #     base_username = fake.user_name().lower().replace(' ', '_')
+        #     username = f"{base_username}_{i}"
+        #     email = fake.email() # Faker debería generar emails únicos la mayoría de las veces
+        #     # Si usas email como USERNAME_FIELD y es unique=True, asegúrate de que email sea único aquí.
+        #     # email = f"user{i}_{fake.domain_name()}" # Una forma de asegurar unicidad del email
 
-            try:
-                user_instance = User.objects.create_user(
-                    username=username,
-                    email=email,
-                    password='password123'
-                )
-                # Opcional: Crear UserProfile si no se crea automáticamente por señales
-                # y si tu AUTH_USER_MODEL no lo maneja.
-                # if hasattr(user_instance, 'profile'): # Si tienes una relación 'profile'
-                #     if not UserProfile.objects.filter(user=user_instance).exists():
-                #         UserProfile.objects.create(user=user_instance, address=fake.address())
-                UserProfile.objects.create(
-                    user=user_instance,
-                    address=fake.address(),
-                    document=fake.ssn(), # O un generador más apropiado
-                    phone=fake.phone_number()
-                )
-                self.stdout.write(self.style.SUCCESS(f'  Successfully created user: {user_instance.username} (Email: {user_instance.email})'))
-            except IntegrityError as e:
-                self.stdout.write(self.style.ERROR(f'  Error creating user (username: {username}, email: {email}): {e}. Skipping.'))
-            except Exception as e:
-                self.stdout.write(self.style.ERROR(f'  An unexpected error occurred creating user (username: {username}, email: {email}): {e}. Skipping.'))
+        #     try:
+        #         user_instance = User.objects.create_user(
+        #             username=username,
+        #             email=email,
+        #             password='password123'
+        #         )
+        #         # Opcional: Crear UserProfile si no se crea automáticamente por señales
+        #         # y si tu AUTH_USER_MODEL no lo maneja.
+        #         # if hasattr(user_instance, 'profile'): # Si tienes una relación 'profile'
+        #         #     if not UserProfile.objects.filter(user=user_instance).exists():
+        #         #         UserProfile.objects.create(user=user_instance, address=fake.address())
+        #         UserProfile.objects.create(
+        #             user=user_instance,
+        #             address=fake.address(),
+        #             document=fake.ssn(), # O un generador más apropiado
+        #             phone=fake.phone_number()
+        #         )
+        #         self.stdout.write(self.style.SUCCESS(f'  Successfully created user: {user_instance.username} (Email: {user_instance.email})'))
+        #     except IntegrityError as e:
+        #         self.stdout.write(self.style.ERROR(f'  Error creating user (username: {username}, email: {email}): {e}. Skipping.'))
+        #     except Exception as e:
+        #         self.stdout.write(self.style.ERROR(f'  An unexpected error occurred creating user (username: {username}, email: {email}): {e}. Skipping.'))
         
-        self.stdout.write(self.style.SUCCESS(f'{User.objects.filter(is_superuser=False).count()} sample users in database.'))
+        # self.stdout.write(self.style.SUCCESS(f'{User.objects.filter(is_superuser=False).count()} sample users in database.'))
             
             
             
@@ -189,6 +189,6 @@ class Command(BaseCommand):
         parser.add_argument(
             '--num_products',
             type=int,
-            default=20,  # Valor por defecto si no se especifica
+            default=30,  # Valor por defecto si no se especifica
             help='Number of products to create'
         )

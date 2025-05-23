@@ -1,7 +1,6 @@
 from django.contrib import admin
 from django.urls import path, include
-
-from rest_framework.schemas import get_schema_view
+from django.conf import settings # Importa settings
 
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -9,7 +8,7 @@ from rest_framework_simplejwt.views import (
     TokenBlacklistView,
 )
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
-
+from django.conf.urls.static import static # Importa static
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -18,6 +17,7 @@ urlpatterns = [
     path('api/inventory/', include('inventory.urls')),
     path('api/carts/', include('carts.urls')),
     path('api/sales/', include('sales.urls')),
+    path('api/marketing/', include('marketing.urls')),
     
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),  # Login: Obtiene token de acceso y refresco
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
@@ -30,3 +30,6 @@ urlpatterns = [
     # UI de Redoc:
     path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
 ]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

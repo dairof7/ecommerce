@@ -5,13 +5,27 @@ from django.db import models
 
 class Category(models.Model):
     name = models.CharField(max_length=100)
-
+    image = models.ImageField("Imagen de Categoría", upload_to='categories/', blank=True, null=True)
+    description = models.TextField("Descripción (opcional)", blank=True)
+    class Meta:
+        verbose_name = "Categoría"
+        verbose_name_plural = "Categorías"
+        ordering = ['name']
     def __str__(self):
         return self.name
 
 class Subcategory(models.Model):
     category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='subcategories')
     name = models.CharField(max_length=100)
+    image = models.ImageField("Imagen de Subcategoría", upload_to='subcategories/', blank=True, null=True)
+    description = models.TextField("Descripción (opcional)", blank=True)
+
+    class Meta:
+        verbose_name = "Subcategoría"
+        verbose_name_plural = "Subcategorías"
+        ordering = ['category', 'name']
+        # Para asegurar que el nombre de la subcategoría sea único dentro de su categoría padre
+        unique_together = ('category', 'name') 
 
     def __str__(self):
         return self.name
@@ -24,12 +38,13 @@ class Tag(models.Model):
 
 class Product(models.Model):
     name = models.CharField(max_length=200)
-    category = models.ForeignKey(Category, on_delete=models.CASCADE)
-    subcategory = models.ForeignKey(Subcategory, on_delete=models.CASCADE)
+    category = models.ForeignKey(Category, on_delete=models.PROTECT)
+    subcategory = models.ForeignKey(Subcategory, on_delete=models.PROTECT)
     description = models.TextField(blank=True, null=True)
     tags = models.ManyToManyField(Tag, blank=True)
     purchase_price = models.DecimalField(max_digits=10, decimal_places=2, null=True)
     stock = models.PositiveIntegerField(default=0)
+    is_featured = models.BooleanField("Producto Destacado", default=False, db_index=True)
     sale_price = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
     # Este 'discount' es el descuento base/individual del producto
     discount = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'))

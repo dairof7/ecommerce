@@ -700,6 +700,232 @@ paths:
               schema:
                 $ref: '#/components/schemas/TokenBlacklist'
           description: ''
+  /api/marketing/banners/:
+    get:
+      operationId: marketing_banners_list
+      description: |-
+        Endpoint para listar banners activos.
+        Permite filtrar por 'placement'.
+        Ejemplo: /api/site-settings/banners/?placement=home_main
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      tags:
+      - marketing
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedBannerList'
+          description: ''
+  /api/products/:
+    get:
+      operationId: products_list
+      parameters:
+      - in: query
+        name: category
+        schema:
+          type: integer
+      - in: query
+        name: name
+        schema:
+          type: string
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: subcategory
+        schema:
+          type: integer
+      - in: query
+        name: tags_name
+        schema:
+          type: array
+          items:
+            type: string
+        description: Filtrar por nombres de tags (separados por comas si se configura
+          el widget o se usa un conversor)
+        explode: true
+        style: form
+      tags:
+      - products
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedProductList'
+          description: ''
+    post:
+      operationId: products_create
+      tags:
+      - products
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Product'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Product'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Product'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+          description: ''
+  /api/products/{id}/:
+    get:
+      operationId: products_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this product.
+        required: true
+      tags:
+      - products
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+          description: ''
+    put:
+      operationId: products_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this product.
+        required: true
+      tags:
+      - products
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Product'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Product'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Product'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+          description: ''
+    patch:
+      operationId: products_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this product.
+        required: true
+      tags:
+      - products
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedProduct'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedProduct'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedProduct'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+          description: ''
+    delete:
+      operationId: products_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this product.
+        required: true
+      tags:
+      - products
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/products/bestsellers/:
+    get:
+      operationId: products_bestsellers_retrieve
+      description: |-
+        Placeholder para los más vendidos. Por ahora, devuelve productos destacados.
+        Permite un parámetro ?limit=N.
+      tags:
+      - products
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+          description: ''
   /api/products/categories/:
     get:
       operationId: products_categories_list
@@ -767,7 +993,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: A unique integer value identifying this category.
+        description: A unique integer value identifying this Categoría.
         required: true
       tags:
       - products
@@ -788,7 +1014,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: A unique integer value identifying this category.
+        description: A unique integer value identifying this Categoría.
         required: true
       tags:
       - products
@@ -820,7 +1046,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: A unique integer value identifying this category.
+        description: A unique integer value identifying this Categoría.
         required: true
       tags:
       - products
@@ -851,7 +1077,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: A unique integer value identifying this category.
+        description: A unique integer value identifying this Categoría.
         required: true
       tags:
       - products
@@ -860,6 +1086,22 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/products/featured/:
+    get:
+      operationId: products_featured_retrieve
+      description: Retorna una lista de productos marcados como destacados (is_featured=True).
+      tags:
+      - products
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+          description: ''
   /api/products/product-images/:
     get:
       operationId: products_product_images_list
@@ -1008,174 +1250,6 @@ paths:
       responses:
         '204':
           description: No response body
-  /api/products/products/:
-    get:
-      operationId: products_products_list
-      parameters:
-      - in: query
-        name: category
-        schema:
-          type: integer
-      - name: ordering
-        required: false
-        in: query
-        description: Which field to use when ordering the results.
-        schema:
-          type: string
-      - name: page
-        required: false
-        in: query
-        description: A page number within the paginated result set.
-        schema:
-          type: integer
-      - name: search
-        required: false
-        in: query
-        description: A search term.
-        schema:
-          type: string
-      - in: query
-        name: subcategory
-        schema:
-          type: integer
-      tags:
-      - products
-      security:
-      - jwtAuth: []
-      - {}
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaginatedProductList'
-          description: ''
-    post:
-      operationId: products_products_create
-      tags:
-      - products
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Product'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/Product'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/Product'
-        required: true
-      security:
-      - jwtAuth: []
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Product'
-          description: ''
-  /api/products/products/{id}/:
-    get:
-      operationId: products_products_retrieve
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: integer
-        description: A unique integer value identifying this product.
-        required: true
-      tags:
-      - products
-      security:
-      - jwtAuth: []
-      - {}
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Product'
-          description: ''
-    put:
-      operationId: products_products_update
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: integer
-        description: A unique integer value identifying this product.
-        required: true
-      tags:
-      - products
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Product'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/Product'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/Product'
-        required: true
-      security:
-      - jwtAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Product'
-          description: ''
-    patch:
-      operationId: products_products_partial_update
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: integer
-        description: A unique integer value identifying this product.
-        required: true
-      tags:
-      - products
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PatchedProduct'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/PatchedProduct'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/PatchedProduct'
-      security:
-      - jwtAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Product'
-          description: ''
-    delete:
-      operationId: products_products_destroy
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: integer
-        description: A unique integer value identifying this product.
-        required: true
-      tags:
-      - products
-      security:
-      - jwtAuth: []
-      responses:
-        '204':
-          description: No response body
   /api/products/subcategories/:
     get:
       operationId: products_subcategories_list
@@ -1247,7 +1321,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: A unique integer value identifying this subcategory.
+        description: A unique integer value identifying this Subcategoría.
         required: true
       tags:
       - products
@@ -1268,7 +1342,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: A unique integer value identifying this subcategory.
+        description: A unique integer value identifying this Subcategoría.
         required: true
       tags:
       - products
@@ -1300,7 +1374,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: A unique integer value identifying this subcategory.
+        description: A unique integer value identifying this Subcategoría.
         required: true
       tags:
       - products
@@ -1331,7 +1405,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: A unique integer value identifying this subcategory.
+        description: A unique integer value identifying this Subcategoría.
         required: true
       tags:
       - products
@@ -1690,6 +1764,50 @@ paths:
           description: ''
 components:
   schemas:
+    Banner:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+          title: Nombre del Banner (interno)
+        image_url:
+          type: string
+          format: uri
+          readOnly: true
+        alt_text:
+          type: string
+          title: Texto Alternativo (SEO y Accesibilidad)
+          maxLength: 255
+        link_url:
+          type: string
+          format: uri
+          nullable: true
+          title: URL de Destino (opcional)
+          maxLength: 200
+        placement:
+          allOf:
+          - $ref: '#/components/schemas/PlacementEnum'
+          title: Ubicación del Banner
+        order:
+          type: integer
+          readOnly: true
+          title: Orden de Visualización
+          description: Menor número se muestra primero en la misma ubicación.
+        is_active:
+          type: boolean
+          readOnly: true
+          title: Activo
+      required:
+      - id
+      - image_url
+      - is_active
+      - name
+      - order
+      - placement
     Cart:
       type: object
       properties:
@@ -1760,8 +1878,16 @@ components:
         name:
           type: string
           maxLength: 100
+        image:
+          type: string
+          format: uri
+          readOnly: true
+        description:
+          type: string
+          title: Descripción (opcional)
       required:
       - id
+      - image
       - name
     Discount:
       type: object
@@ -1793,6 +1919,29 @@ components:
       - id
       - percentage
       - start_date
+    PaginatedBannerList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Banner'
     PaginatedCartList:
       type: object
       required:
@@ -2031,6 +2180,13 @@ components:
         name:
           type: string
           maxLength: 100
+        image:
+          type: string
+          format: uri
+          readOnly: true
+        description:
+          type: string
+          title: Descripción (opcional)
     PatchedDiscount:
       type: object
       properties:
@@ -2096,6 +2252,9 @@ components:
         stock:
           type: integer
           readOnly: true
+        is_featured:
+          type: boolean
+          title: Producto Destacado
         created_at:
           type: string
           format: date-time
@@ -2213,8 +2372,16 @@ components:
         name:
           type: string
           maxLength: 100
-        category:
+        image:
+          type: string
+          format: uri
+          readOnly: true
+        description:
+          type: string
+          title: Descripción (opcional)
+        category_id:
           type: integer
+          readOnly: true
     PatchedTag:
       type: object
       properties:
@@ -2241,6 +2408,22 @@ components:
         phone:
           type: string
           maxLength: 20
+    PlacementEnum:
+      enum:
+      - home_main
+      - home_secondary
+      - product_list_top
+      - product_list_sidebar
+      - product_detail_related
+      - general_sitewide_top
+      type: string
+      description: |-
+        * `home_main` - Home - Carrusel Principal
+        * `home_secondary` - Home - Sección Secundaria
+        * `product_list_top` - Listado de Productos - Superior
+        * `product_list_sidebar` - Listado de Productos - Barra Lateral
+        * `product_detail_related` - Detalle de Producto - Relacionados
+        * `general_sitewide_top` - General - Encabezado Sitio
     Product:
       type: object
       properties:
@@ -2281,6 +2464,9 @@ components:
         stock:
           type: integer
           readOnly: true
+        is_featured:
+          type: boolean
+          title: Producto Destacado
         created_at:
           type: string
           format: date-time
@@ -2480,11 +2666,20 @@ components:
         name:
           type: string
           maxLength: 100
-        category:
+        image:
+          type: string
+          format: uri
+          readOnly: true
+        description:
+          type: string
+          title: Descripción (opcional)
+        category_id:
           type: integer
+          readOnly: true
       required:
-      - category
+      - category_id
       - id
+      - image
       - name
     Tag:
       type: object
