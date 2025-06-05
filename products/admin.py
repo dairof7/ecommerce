@@ -61,7 +61,7 @@ class ProductImageInline(admin.TabularInline):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ('name', 'category', 'subcategory', 'sale_price', 'stock', 'discount', 'is_featured')
+    list_display = ('id','name', 'category', 'subcategory', 'sale_price', 'stock', 'discount', 'is_featured')
     list_filter = ('category', 'subcategory', 'tags', 'is_featured')
     search_fields = ('name', 'description')
     list_editable = ('is_featured',)

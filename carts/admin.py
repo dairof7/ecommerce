@@ -40,7 +40,7 @@ class QuoteAdmin(admin.ModelAdmin):
 
 @admin.register(CartItem)
 class CartItemAdmin(admin.ModelAdmin):
-    list_display = ('cart', 'product', 'quantity', 'subtotal') # Mostrar subtotal
+    list_display = ('id','cart', 'product', 'quantity', 'subtotal') # Mostrar subtotal
     list_filter = ('cart__user', 'product') # Filtrar por usuario del carrito y producto
     search_fields = ('cart__user__username', 'product__name')
     readonly_fields = ('subtotal',)
@@ -48,7 +48,7 @@ class CartItemAdmin(admin.ModelAdmin):
 # Registrar QuoteItem (aunque se verá principalmente como inline en Quote)
 @admin.register(QuoteItem)
 class QuoteItemAdmin(admin.ModelAdmin):
-    list_display = ('quote', 'product', 'quantity', 'price_at_quote', 'subtotal')
+    list_display = ('id','quote', 'product', 'quantity', 'price_at_quote', 'subtotal')
     list_filter = ('quote__user', 'product', 'quote__status') # Filtrar por usuario de la cotización, producto y estado de la cotización
     search_fields = ('quote__user__username', 'product__name', 'quote__id')
     readonly_fields = ('quote', 'product', 'quantity', 'price_at_quote', 'subtotal')

@@ -76,6 +76,93 @@ class CartViewSet(viewsets.ModelViewSet):
     #     return super().retrieve(request, *args, **kwargs)
 
 
+    @action(detail=False, methods=['post'], url_path='add-one')
+    def add_one_to_cart(self, request):
+        cart = self.get_queryset().first()
+        if not cart:
+            return Response({"error": "Carrito no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            product_id = int(request.data.get('product_id'))
+        except (ValueError, TypeError, KeyError):
+            return Response({"error": "product_id es requerido y debe ser un entero."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            product = Product.objects.get(pk=product_id)
+        except Product.DoesNotExist:
+            return Response({"error": "Producto no encontrado."}, status=status.HTTP_400_BAD_REQUEST)
+
+        quantity_to_add = 1 # Siempre añadimos 1 unidad con este endpoint
+
+        with transaction.atomic():
+            cart_item, created = CartItem.objects.select_for_update().get_or_create(
+                cart=cart,
+                product=product,
+                defaults={'quantity': 0} # Inicializa en 0 si es nuevo, luego se suma 1
+            )
+
+            new_total_quantity_for_item = cart_item.quantity + quantity_to_add
+
+            if product.stock < new_total_quantity_for_item:
+                current_in_cart_msg = f" Ya tienes {cart_item.quantity} en el carrito." if cart_item.quantity > 0 else ""
+                return Response(
+                    {"error": f"Stock insuficiente para '{product.name}'. Disponible: {product.stock}. Intentaste añadir {quantity_to_add}.{current_in_cart_msg}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            cart_item.quantity = new_total_quantity_for_item
+            cart_item.save()
+        
+        cart.refresh_from_db()
+        serializer = self.get_serializer(cart)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='item') # Cambiado a 'item' y espera product_id y quantity total
+    def manage_cart_item(self, request):
+        cart = self.get_queryset().first()
+        if not cart:
+            return Response({"error": "Carrito no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            product_id = int(request.data.get('product_id'))
+            # Esta 'quantity' es la NUEVA CANTIDAD TOTAL deseada para el item
+            quantity = int(request.data.get('quantity')) 
+        except (ValueError, TypeError, KeyError):
+            return Response({"error": "product_id y quantity son requeridos y deben ser enteros."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            product = Product.objects.get(pk=product_id)
+        except Product.DoesNotExist:
+            return Response({"error": "Producto no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+        if quantity <= 0: # Si la nueva cantidad es 0 o menos, eliminar el item
+            CartItem.objects.filter(cart=cart, product=product).delete()
+            action_taken = "eliminado"
+        else:
+            # Validar stock para la nueva cantidad total
+            if product.stock < quantity:
+                # Obtener la cantidad actual en el carrito para un mensaje más útil
+                current_item = CartItem.objects.filter(cart=cart, product=product).first()
+                current_qty_in_cart = current_item.quantity if current_item else 0
+                return Response(
+                    {"error": f"Stock insuficiente para '{product.name}'. Disponible: {product.stock}. Solicitado total: {quantity}. Ya en carrito: {current_qty_in_cart}."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Actualiza o crea el item con la cantidad especificada
+            cart_item, created = CartItem.objects.update_or_create(
+                cart=cart,
+                product=product,
+                defaults={'quantity': quantity} # ESTABLECE la cantidad
+            )
+            action_taken = "actualizado" if not created else "añadido"
+
+        # Devolver el carrito completo actualizado
+        cart.refresh_from_db() # Para asegurar que cualquier cálculo en el modelo Cart se actualice
+        serializer = self.get_serializer(cart) # Usa el serializer del ViewSet (CartSerializer)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
     @action(detail=False, methods=['post']) # Cambiamos a detail=False para operar en el carrito del usuario directamente
     def add_item(self, request):
         """
@@ -83,13 +170,12 @@ class CartViewSet(viewsets.ModelViewSet):
         Requiere 'product_id' y 'quantity' en el cuerpo de la solicitud.
         """
         cart = self.get_queryset().first() # Obtenemos el carrito del usuario autenticado
-
+        
         product_id = request.data.get('product_id')
         quantity = int(request.data.get('quantity', 0)) # Cantidad esperada
-
+        print(f"Adding item to cart: product_id={product_id}, quantity={quantity}")
         if quantity <= 0:
             return Response({"error": "Quantity must be positive."}, status=status.HTTP_400_BAD_REQUEST)
-
         try:
             product = Product.objects.get(pk=product_id)
         except Product.DoesNotExist:
@@ -97,9 +183,9 @@ class CartViewSet(viewsets.ModelViewSet):
 
         # Validar stock antes de añadir/actualizar en el carrito
         # Si el item ya existe, sumamos la cantidad existente a la nueva cantidad para la validación
-        existing_item = cart.items.filter(product=product).first()
+        existing_item = cart.items.filter(id=product_id).first()
         total_quantity_requested = quantity + (existing_item.quantity if existing_item else 0)
-
+        print('aca')
         if product.stock < total_quantity_requested:
             return Response({"error": f"Insufficient stock.  Only {product.stock} available for {product.name} (already in cart: {existing_item.quantity if existing_item else 0})."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -162,7 +248,6 @@ class CartViewSet(viewsets.ModelViewSet):
                 # 2. Crear QuoteItems y calcular el total
                 quote_total = Decimal('0.00') # Usar Decimal para el total
                 quote_items_to_create = []
-
                 for item in cart_items:
                     product = item.product
 
@@ -178,11 +263,7 @@ class CartViewSet(viewsets.ModelViewSet):
                     quote_items_to_create.append(quote_item_instance)
                     quote_total += quote_item_instance.subtotal # subtotal usará este price_at_quote
 
-                    quote_items_to_create.append(quote_item_instance)
                     
-                    # Sumar al total usando la propiedad subtotal del QuoteItem (que usa price_at_quote)
-                    # Esto requiere que la instancia tenga price_at_quote seteado.
-                    quote_total += quote_item_instance.subtotal # Llama a la propiedad @property subtotal
 
                 # 3. Bulk create QuoteItems para eficiencia (esto los guarda en la BD)
                 QuoteItem.objects.bulk_create(quote_items_to_create)

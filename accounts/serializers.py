@@ -19,6 +19,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 class UserProfileSerializer(serializers.ModelSerializer):
     user = serializers.ReadOnlyField(source='user.username')
+    email = serializers.ReadOnlyField(source='user.email')
 
     class Meta:
         model = UserProfile

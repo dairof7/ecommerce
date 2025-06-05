@@ -21,8 +21,6 @@ class CartItem(models.Model):
     @property
     def subtotal(self):
         price_after_discount = self.product.sale_price * (1 - self.product.discount / 100)
-        print('p' * 20)
-        print(price_after_discount * self.quantity)
         return price_after_discount * self.quantity
 
     def __str__(self):
