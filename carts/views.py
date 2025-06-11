@@ -173,7 +173,6 @@ class CartViewSet(viewsets.ModelViewSet):
         
         product_id = request.data.get('product_id')
         quantity = int(request.data.get('quantity', 0)) # Cantidad esperada
-        print(f"Adding item to cart: product_id={product_id}, quantity={quantity}")
         if quantity <= 0:
             return Response({"error": "Quantity must be positive."}, status=status.HTTP_400_BAD_REQUEST)
         try:
@@ -185,7 +184,6 @@ class CartViewSet(viewsets.ModelViewSet):
         # Si el item ya existe, sumamos la cantidad existente a la nueva cantidad para la validación
         existing_item = cart.items.filter(id=product_id).first()
         total_quantity_requested = quantity + (existing_item.quantity if existing_item else 0)
-        print('aca')
         if product.stock < total_quantity_requested:
             return Response({"error": f"Insufficient stock.  Only {product.stock} available for {product.name} (already in cart: {existing_item.quantity if existing_item else 0})."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -279,7 +277,6 @@ class CartViewSet(viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e: # Capturar cualquier otra excepción durante la transacción
             # Log el error real para depuración interna
-            print(f"Error creating quote: {str(e)}") # Considera usar logging.error()
             return Response({"error": "An unexpected error occurred while creating the quote."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         # Si la transacción fue exitosa, serializar y retornar la cotización

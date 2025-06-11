@@ -65,15 +65,12 @@ def test_user_registration_duplicate_username(api_client):
 def test_user_login_get_token_success(api_client):
     password = 'SecurePassword123'
     user = UserFactory(username='loginuser', password=password) # Crea usuario con contraseña
-    print(user) # Para depuración, puedes ver la contraseña hasheada
     url = reverse('token_obtain_pair') # URL de SimpleJWT para obtener tokens
     login_data = {
         'username': 'loginuser',
         'password': password
     }
-    print(url)
     response = api_client.post(url, login_data, format='json')
-    print(response.data) # Para depuración, puedes ver la respuesta completa
     assert response.status_code == status.HTTP_200_OK
     assert 'access' in response.data
     assert 'refresh' in response.data

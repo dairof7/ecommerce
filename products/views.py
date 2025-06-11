@@ -156,13 +156,11 @@ class RelevantTagsView(views.APIView):
         filtering_params.pop('tags_name', None)
         # if 'search' in filtering_params:
         #     filtering_params['name'] = filtering_params['search']
-        print(filtering_params)
         
         # Aplicar los filtros de producto (categoría, subcategoría, búsqueda, etc.)
         # utilizando tu ProductFilter existente.
         product_filter = ProductFilter(data=filtering_params, queryset=product_queryset, request=request)
         filtered_products_qs = product_filter.qs # Este es el queryset de productos ya filtrados
-        # print(filtered_products_qs)
         # 2. A partir de estos productos filtrados, obtener los tags y su conteo
         # Usamos annotate para contar cuántos productos filtrados tiene cada tag.
         # distinct=True en Count es importante si un producto puede tener el mismo tag múltiples veces
