@@ -1,15 +1,18 @@
 from pathlib import Path
 import os
-BASE_DIR = Path(__file__).resolve().parent.parent
+from decimal import Decimal # Si no lo tienes
+from dotenv import load_dotenv # pip install python-dotenv
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(os.path.join(BASE_DIR, '.env'))
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-yfkrm@_g550m)3y)*^s%b4zqxpt7&owuan^9!-0opthq(*qj^*'
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DJANGO_DEBUG', 'False').lower() in ['true', '1', 't']
 
-ALLOWED_HOSTS = []
-
+ALLOWED_HOSTS_STRING = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1')
+ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS_STRING.split(',')]
 
 # Application definition
 
@@ -67,19 +70,27 @@ TEMPLATES = [
 WSGI_APPLICATION = 'ecommerce.wsgi.application'
 
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173", # Para Vite
-    "http://localhost:3000", # Para Create React App (si lo usaras)
-    # Añade otros orígenes si es necesario
-]
+CORS_ALLOWED_ORIGINS = [origin.strip() for origin in os.environ.get('DJANGO_CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')]
+CORS_ALLOW_CREDENTIALS = True
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
+#     }
+# }
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': os.environ.get('SQL_ENGINE', 'django.db.backends.postgresql'),
+        'NAME': os.environ.get('POSTGRES_DB'), # Para e-commerce, debería ser POSTGRES_DB
+        'USER': os.environ.get('POSTGRES_USER'), # POSTGRES_USER
+        'PASSWORD': os.environ.get('POSTGRES_PASSWORD'), # POSTGRES_PASSWORD
+        'HOST': os.environ.get('POSTGRES_HOST', 'db'), # db_ecommerce
+        'PORT': os.environ.get('POSTGRES_PORT', '5432'),
     }
 }
 
@@ -134,19 +145,15 @@ USE_I18N = True
 USE_TZ = True
 
 
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
-
-# Default primary key field type
-# https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_ROOT = os.path.join(BASE_DIR, 'mediafiles')
 from datetime import timedelta
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=11120),  # 1 hora en segundos
