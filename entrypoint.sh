@@ -16,4 +16,4 @@ echo "Recolectando archivos estáticos..."
 python manage.py collectstatic --noinput --clear
 
 echo "Iniciando Gunicorn en 0.0.0.0:8000..."
-exec gunicorn my_ecommerce.wsgi:application --bind 0.0.0.0:8000 --workers 3 --log-level info --access-logfile - --error-logfile -
+exec gunicorn ecommerce.wsgi:application --bind 0.0.0.0:8000 --workers 3 --log-level info --access-logfile - --error-logfile -
