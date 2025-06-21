@@ -24,7 +24,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copiar el resto del código de la aplicación
 COPY . .
-# RUN chmod +x entrypoint.sh
+RUN chmod +x entrypoint.sh
 
 # Exponer el puerto que usará Gunicorn
 EXPOSE 8000
