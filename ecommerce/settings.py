@@ -70,7 +70,13 @@ TEMPLATES = [
 WSGI_APPLICATION = 'ecommerce.wsgi.application'
 
 
-CORS_ALLOWED_ORIGINS = [origin.strip() for origin in os.environ.get('DJANGO_CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')]
+DJANGO_CORS_ALLOWED_ORIGINS_STR = os.environ.get('DJANGO_CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://localhost:8000')
+CORS_ALLOWED_ORIGINS = [origin.strip() for origin in DJANGO_CORS_ALLOWED_ORIGINS_STR.split(',') if origin.strip()]
+
+DJANGO_CSRF_TRUSTED_ORIGINS_STR = os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', 'http://localhost:5173,http://localhost:8000')
+CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in DJANGO_CSRF_TRUSTED_ORIGINS_STR.split(',') if origin.strip()]
+
+# CORS_ALLOWED_ORIGINS = [origin.strip() for origin in os.environ.get('DJANGO_CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')]
 CORS_ALLOW_CREDENTIALS = True
 
 # Database
