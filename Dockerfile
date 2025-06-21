@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar requirements.txt y entrypoint.sh primero
-COPY requirements.txt ./entrypoint.sh /app/
+COPY requirements.txt entrypoint.sh /app/
 RUN chmod +x /app/entrypoint.sh
 
 # Instalar dependencias de Python
