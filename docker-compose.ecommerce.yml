@@ -3,93 +3,94 @@ version: '3.8'
 
 services:
   db:
-    image: postgres:15-alpine # O la versión de PostgreSQL que prefieras
+    image: postgres:15-alpine
+    container_name: ecommerce-db # Nombre explícito del contenedor
     volumes:
-      - postgres_data:/var/lib/postgresql/data/ # Persistencia de datos
+      - postgres_data:/var/lib/postgresql/data/
     environment:
-      - POSTGRES_DB=${POSTGRES_DB:-postgres}
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD} # ¡Cambia esto en producción!
-    ports: # Opcional: exponer para acceso directo a la BD desde tu máquina (solo para desarrollo/debug)
-      - "5433:5432" # Mapea el puerto 5432 del contenedor al 5433 de tu host
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    ports:
+      - "5433:5432" # Host:Container - Para acceso externo opcional
     networks:
       - app-network
+    restart: unless-stopped # Para que se reinicie si se cae, a menos que se pare manualmente
 
   backend:
     build:
-      context: ./backend # Ruta a tu proyecto Django (donde está el Dockerfile del backend)
-      # args: # Si necesitas pasar argumentos de build
-      #   SOME_BUILD_ARG: value
-    # command: python manage.py runserver 0.0.0.0:8000 # Para desarrollo simple
-    # command: gunicorn my_ecommerce.wsgi:application --bind 0.0.0.0:8000 --workers 3 # Para producción
+      context: ./backend # Ruta a tu proyecto Django
+    container_name: ecommerce-backend
     volumes:
-      - ./backend:/app # Monta el código para desarrollo (hot-reloading) - ¡QUITAR O CAMBIAR PARA PRODUCCIÓN!
-      - static_volume:/app/staticfiles # Volumen para staticfiles
-      - media_volume:/app/mediafiles   # Volumen para mediafiles
-    expose: # Puertos expuestos solo a otros contenedores en la red, no al host
+      # En producción, idealmente no montarías el código fuente así.
+      # La imagen ya debería contener el código.
+      # Pero para pruebas donde podrías querer hacer cambios rápidos sin reconstruir, puede ser útil.
+      # Si es un despliegue más "fijo", comenta la siguiente línea:
+      - ./backend:/app 
+      - static_volume:/app/staticfiles # Django escribe aquí con collectstatic
+      - media_volume:/app/mediafiles   # Django escribe aquí los archivos subidos
+    expose: # Solo accesible por otros contenedores en la misma red
       - "8000"
     environment:
-      - SECRET_KEY=${DJANGO_SECRET_KEY} # ¡Genera una nueva y segura!
-      - DEBUG=${DJANGO_DEBUG:-0} # 0 para producción, 1 para desarrollo
-      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-localhost 127.0.0.1 [::1] tu_dominio.com www.tu_dominio.com}
-      - POSTGRES_DB=${POSTGRES_DB:-postgres}
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - SECRET_KEY=${DJANGO_SECRET_KEY}
+      - DEBUG=${DJANGO_DEBUG:-0}
+      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS} # ej. localhost,127.0.0.1,tu_dominio.com
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_HOST=db # Nombre del servicio de la base de datos
+      - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
-      # - CELERY_BROKER_URL=redis://redis:6379/0 # Si usas Celery con Redis
-      # - CELERY_RESULT_BACKEND=redis://redis:6379/0
     depends_on:
       - db
     networks:
       - app-network
+    restart: unless-stopped
 
-  frontend: # Si sirves el frontend con su propio Nginx en un contenedor
+  frontend:
     build:
-      context: ./frontend # Ruta a tu proyecto React (donde está el Dockerfile del frontend)
-      args: # Ejemplo de cómo pasar la URL de la API en el build
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api} # Si Nginx principal lo rutea
-        # O VITE_API_BASE_URL: http://tu_dominio.com/api
-    expose:
-      - "80" # Nginx en el contenedor frontend escucha en el puerto 80
+      context: ./frontend # Ruta a tu proyecto React
+      args:
+        # Esta variable se pasa al Dockerfile del frontend durante la build.
+        # Si el Nginx principal va a rutear /api al backend, y el frontend está en la raíz,
+        # el frontend puede hacer llamadas a /api/... y Nginx lo manejará.
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api} 
+    container_name: ecommerce-frontend
+    expose: # El Nginx dentro de este contenedor escucha en el puerto 80
+      - "80"
     networks:
       - app-network
-    # Si el Nginx principal no sirve los archivos del frontend, necesitarías un 'ports' aquí.
-    # Pero si el Nginx principal lo hace, no es necesario.
+    restart: unless-stopped
 
   nginx:
-    image: nginx:stable-alpine
+    image: nginx:stable-alpine # Usamos la imagen oficial
+    container_name: ecommerce-nginx
     ports:
-      - "80:80"   # Para HTTP
-      - "443:443" # Para HTTPS (necesitarás configurar SSL)
+      - "80:80"   # Escucha en el puerto 80 del host y lo redirige al 80 del contenedor
+      - "443:443" # Para HTTPS más adelante
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro # Tu configuración de Nginx
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro # Configuraciones adicionales de sitios
-      - static_volume:/app/backend/staticfiles # Monta los staticfiles de Django
-      - media_volume:/app/backend/mediafiles   # Monta los mediafiles de Django
-      # Si Nginx sirve el frontend:
-      - ./frontend/dist:/usr/share/nginx/html/frontend:ro # Monta el build del frontend
-      # Para SSL con Let's Encrypt (Certbot)
+      # Monta tu configuración personalizada de Nginx
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro 
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro # Directorio para configuraciones de virtual hosts
+      # Volúmenes para servir archivos estáticos y multimedia de Django directamente
+      - static_volume:/srv/www/staticfiles # Nginx accederá a los estáticos de Django desde aquí
+      - media_volume:/srv/www/mediafiles   # Nginx accederá a los media de Django desde aquí
+      # Para SSL con Let's Encrypt (Certbot) - descomentar cuando se configure
       # - certbot_conf:/etc/letsencrypt
       # - certbot_www:/var/www/certbot
     depends_on:
       - backend
-      # - frontend # Si el frontend tiene su propio servidor Nginx y este solo actúa como proxy
+      - frontend # Nginx principal ahora depende de ambos servicios
     networks:
       - app-network
+    restart: unless-stopped
 
-  # redis: # Opcional
-  #   image: redis:alpine
-  #   networks:
-  #     - app-network
-
-volumes: # Define los volúmenes
+volumes:
   postgres_data:
   static_volume:
   media_volume:
-  # certbot_conf: # Si usas Certbot
+  # certbot_conf:
   # certbot_www:
 
-networks: # Define la red personalizada
+networks:
   app-network:
     driver: bridge
