@@ -26,7 +26,7 @@ services:
       # La imagen ya debería contener el código.
       # Pero para pruebas donde podrías querer hacer cambios rápidos sin reconstruir, puede ser útil.
       # Si es un despliegue más "fijo", comenta la siguiente línea:
-      - ./backend:/app 
+      # - ./backend:/app 
       - static_volume:/app/staticfiles # Django escribe aquí con collectstatic
       - media_volume:/app/mediafiles   # Django escribe aquí los archivos subidos
     expose: # Solo accesible por otros contenedores en la misma red

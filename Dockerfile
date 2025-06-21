@@ -17,14 +17,14 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar requirements.txt y entrypoint.sh primero
-COPY requirements.txt /app/
+COPY requirements.txt .
 
 # Instalar dependencias de Python
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copiar el resto del código de la aplicación
-COPY . /app/
-RUN chmod +x /app/entrypoint.sh
+COPY . .
+# RUN chmod +x entrypoint.sh
 
 # Exponer el puerto que usará Gunicorn
 EXPOSE 8000
