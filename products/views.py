@@ -37,7 +37,7 @@ class TagViewSet(viewsets.ModelViewSet):
 #     ordering_fields = ['name', 'sale_price']
 
 class ProductViewSet(viewsets.ModelViewSet):
-    queryset = Product.objects.all().order_by('id')
+    queryset = Product.objects.all().order_by('-is_featured', '-discount', '-created_at') # Ordenar por destacados primero y luego por fecha de creación
     serializer_class = ProductSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter, DjangoFilterBackend]
     search_fields = ['name', 'description', 'category__name', 'subcategory__name', 'tags__name']
