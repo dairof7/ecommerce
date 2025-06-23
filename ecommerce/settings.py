@@ -10,6 +10,11 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', 'False').lower() in ['true', '1', 't']
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT = True # Redirige todas las solicitudes no seguras (HTTP) a HTTPS a nivel de Django
+    SESSION_COOKIE_SECURE = True # Envía cookies de sesión solo sobre HTTPS
+    CSRF_COOKIE_SECURE = True    # Envía cookies CSRF solo sobre HTTPS
 
 ALLOWED_HOSTS_STRING = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1')
 ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS_STRING.split(',')]
