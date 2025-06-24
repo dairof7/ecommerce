@@ -2,7 +2,7 @@ from django.utils import timezone
 from decimal import Decimal
 from django.db import models
 # from sales.models import Discount
-
+from decimal import Decimal, ROUND_DOWN
 class Category(models.Model):
     name = models.CharField(max_length=100)
     image = models.ImageField("Imagen de Categoría", upload_to='categories/', blank=True, null=True)
@@ -114,8 +114,8 @@ class Product(models.Model):
         effective_discount_percentage = dynamic_discount_percentage if self.discount == 0 else self.discount
 
         final_price = base_price * (Decimal('1.00') - (effective_discount_percentage / Decimal('100.00')))
-        
-        return final_price.quantize(Decimal("0.01")) # Redondear a 2 decimales
+        rounded_price = final_price.quantize(Decimal('1E3'), rounding=ROUND_DOWN)
+        return rounded_price
 
     @property
     def active_discount_info(self):
