@@ -7,10 +7,15 @@ class Category(models.Model):
     name = models.CharField(max_length=100)
     image = models.ImageField("Imagen de Categoría", upload_to='categories/', blank=True, null=True)
     description = models.TextField("Descripción (opcional)", blank=True)
+    display_order = models.PositiveIntegerField(
+        "Orden de Visualización", 
+        default=0, 
+        help_text="Menor número aparece primero. 0 es la prioridad más alta."
+    )
     class Meta:
         verbose_name = "Categoría"
         verbose_name_plural = "Categorías"
-        ordering = ['name']
+        ordering = ['display_order', 'name']
     def __str__(self):
         return self.name
 

@@ -12,7 +12,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter, DjangoFilterBackend]
     
     search_fields = ['name'] # Puedes añadir búsqueda por nombre si quieres
-    ordering_fields = ['name', 'category__name'] # Permite ordenar por nombre o nombre de categoría
+    ordering_fields = ['name', 'display_order', 'category__name'] # Permite ordenar por nombre o nombre de categoría
 
 
 class SubcategoryViewSet(viewsets.ModelViewSet):

@@ -4,12 +4,14 @@ from django.utils.html import format_html
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'image_thumbnail', 'description_short') # Añadir miniatura
+    list_display = ('id', 'name', 'display_order','image_thumbnail', 'description_short') # Añadir miniatura
     search_fields = ('name', 'description')
+    list_editable = ('display_order',)
     # Para mostrar la imagen en el formulario de edición y permitir la subida:
     fields = ('name', 'description', 'image', 'image_preview') # 'image' es el campo de subida
     readonly_fields = ('image_preview',) # Para mostrar la vista previa
-
+    ordering = ('display_order', 'name')
+    
     def image_thumbnail(self, obj):
         if obj.image:
             return format_html('<img src="{}" style="width: 45px; height:45px; object-fit:cover;" />', obj.image.url)
