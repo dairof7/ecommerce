@@ -64,9 +64,11 @@ class UserProfileFactory(DjangoModelFactory):
     user = factory.SubFactory(UserFactory)
     
     address = factory.Faker('address')
-    document = factory.Faker('ssn') # O un generador más específico para tu tipo de documento
-    phone = factory.Faker('phone_number')
-
+    # document = factory.Faker('ssn') 
+    document = factory.LazyAttribute(lambda obj: fake.ssn()[:20])
+    # phone = factory.LazyAttribute(lambda obj: fake.phone_number()[:20]) 
+    phone = factory.Faker('ssn')
+    
     # Si UserFactory crea un UserProfile automáticamente (como en tu vista de registro),
     # podrías necesitar ajustar esto para evitar crear dos perfiles,
     # o asegurarte de que UserFactory no cree el perfil si se está usando UserProfileFactory.

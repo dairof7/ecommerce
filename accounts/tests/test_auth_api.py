@@ -65,9 +65,10 @@ def test_user_registration_duplicate_username(api_client):
 def test_user_login_get_token_success(api_client):
     password = 'SecurePassword123'
     user = UserFactory(username='loginuser', password=password) # Crea usuario con contraseña
-    url = reverse('token_obtain_pair') # URL de SimpleJWT para obtener tokens
+    url = reverse('token_obtain_pair')
+    # URL de SimpleJWT para obtener tokens
     login_data = {
-        'username': 'loginuser',
+        'email': user.email, 
         'password': password
     }
     response = api_client.post(url, login_data, format='json')
@@ -81,10 +82,10 @@ def test_user_login_get_token_success(api_client):
     # assert access_token_payload['user_id'] == user.id
 
 def test_user_login_invalid_credentials(api_client):
-    UserFactory(username='loginuser', password='password123')
+    user = UserFactory(username='loginuser', password='password123')
     url = reverse('token_obtain_pair')
     invalid_login_data = {
-        'username': 'loginuser',
+        'email': user.email,
         'password': 'WrongPassword'
     }
     response = api_client.post(url, invalid_login_data, format='json')
