@@ -1,5 +1,5 @@
 # carts/views.py
-from rest_framework import viewsets, status
+from rest_framework import viewsets, permissions, status, filters
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from .models import Cart, CartItem, Quote, QuoteItem
@@ -9,7 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.db import transaction # Importar para transacciones atómicas
 from decimal import Decimal
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
-
+from django_filters.rest_framework import DjangoFilterBackend
 class CartViewSet(viewsets.ModelViewSet):
     serializer_class = CartSerializer
     permission_classes = [IsAuthenticated]
@@ -101,24 +101,25 @@ class CartViewSet(viewsets.ModelViewSet):
                 defaults={'quantity': 0} # Inicializa en 0 si es nuevo, luego se suma 1
             )
 
-            new_total_quantity_for_item = cart_item.quantity + quantity_to_add
+            current_qty_in_cart = cart_item.quantity
+            new_total_quantity = current_qty_in_cart + quantity_to_add
 
-            if product.stock < new_total_quantity_for_item:
+            if product.stock < new_total_quantity:
                 current_in_cart_msg = f" Ya tienes {cart_item.quantity} en el carrito." if cart_item.quantity > 0 else ""
                 return Response(
                     {"error": f"Stock insuficiente para '{product.name}'. Disponible: {product.stock}. Intentaste añadir {quantity_to_add}.{current_in_cart_msg}"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            cart_item.quantity = new_total_quantity_for_item
+            cart_item.quantity = new_total_quantity
             cart_item.save()
         
         cart.refresh_from_db()
         serializer = self.get_serializer(cart)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    @action(detail=False, methods=['post'], url_path='item') # Cambiado a 'item' y espera product_id y quantity total
-    def manage_cart_item(self, request):
+    @action(detail=False, methods=['post'], url_path='add_items') # Cambiado a 'item' y espera product_id y quantity total
+    def add_items_by_quantity(self, request):
         cart = self.get_queryset().first()
         if not cart:
             return Response({"error": "Carrito no encontrado."}, status=status.HTTP_404_NOT_FOUND)
@@ -140,10 +141,9 @@ class CartViewSet(viewsets.ModelViewSet):
             action_taken = "eliminado"
         else:
             # Validar stock para la nueva cantidad total
-            if product.stock < quantity:
-                # Obtener la cantidad actual en el carrito para un mensaje más útil
-                current_item = CartItem.objects.filter(cart=cart, product=product).first()
-                current_qty_in_cart = current_item.quantity if current_item else 0
+            current_item = CartItem.objects.filter(cart=cart, product=product).first()
+            current_qty_in_cart = current_item.quantity if current_item else 0
+            if product.stock < quantity + current_qty_in_cart:
                 return Response(
                     {"error": f"Stock insuficiente para '{product.name}'. Disponible: {product.stock}. Solicitado total: {quantity}. Ya en carrito: {current_qty_in_cart}."},
                     status=status.HTTP_400_BAD_REQUEST
@@ -153,7 +153,7 @@ class CartViewSet(viewsets.ModelViewSet):
             cart_item, created = CartItem.objects.update_or_create(
                 cart=cart,
                 product=product,
-                defaults={'quantity': quantity} # ESTABLECE la cantidad
+                defaults={'quantity': quantity + current_qty_in_cart} # ESTABLECE la cantidad
             )
             action_taken = "actualizado" if not created else "añadido"
 
@@ -288,144 +288,173 @@ class CartViewSet(viewsets.ModelViewSet):
 
 class QuoteViewSet(viewsets.ModelViewSet):
     serializer_class = QuoteSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
 
+    # --- AÑADIR CONFIGURACIÓN DE FILTRADO Y BÚSQUEDA ---
+    filter_backends = [filters.SearchFilter, DjangoFilterBackend, filters.OrderingFilter]
+    
+    # Campos por los que el admin podrá buscar texto libre
+    search_fields = [
+        'id', # Buscar por ID de cotización
+        'user__username', # Buscar por username del cliente
+        'user__email', # Buscar por email del cliente
+        'user__profile__document', # Buscar por documento del cliente (si tienes perfil)
+    ]
+    
+    # Campos por los que el admin podrá filtrar con valores exactos (ej. ?status=pending)
+    filterset_fields = ['status']
+    
+    # Campos por los que se podrá ordenar
+    ordering_fields = ['id', 'created_at', 'total', 'user__email']
+    ordering = ['-created_at'] # Orden por defecto
 
-
-
+    # --- ANOTACIONES DE SCHEMA MEJORADAS A NIVEL DE CLASE ---
+    # Esto se aplicará a los métodos de detalle (retrieve, update, etc.)
+    # y es menos repetitivo.
     @extend_schema(
         parameters=[
-            OpenApiParameter(name='id', description='A unique integer value identifying this cart.', required=True, type=OpenApiTypes.INT, location=OpenApiParameter.PATH)
+            OpenApiParameter(name='id', description='Un valor entero único que identifica esta cotización.', required=True, type=OpenApiTypes.INT, location=OpenApiParameter.PATH)
         ]
     )
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    @extend_schema(
-        parameters=[
-            OpenApiParameter(name='id', description='A unique integer value identifying this cart.', required=True, type=OpenApiTypes.INT, location=OpenApiParameter.PATH)
-        ]
-    )
-    def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
-    @extend_schema(
-        parameters=[
-            OpenApiParameter(name='id', description='A unique integer value identifying this cart.', required=True, type=OpenApiTypes.INT, location=OpenApiParameter.PATH)
-        ]
-    )
-    def partial_update(self, request, *args, **kwargs):
-        return super().partial_update(request, *args, **kwargs)
-    @extend_schema(
-        parameters=[
-            OpenApiParameter(name='id', description='A unique integer value identifying this cart.', required=True, type=OpenApiTypes.INT, location=OpenApiParameter.PATH)
-        ]
-    )
-    def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
-
-
+    # Puedes omitir las redefiniciones de update, partial_update, destroy
+    # si no tienen lógica personalizada. @extend_schema en la clase padre
+    # o en retrieve a menudo es suficiente para que spectacular entienda el parámetro.
+    # Si aún así necesitas ser explícito, mantenlos, pero con la descripción correcta.
 
     def get_queryset(self):
         """
-        Permite a los usuarios ver solo sus propias cotizaciones.
         Permite a los administradores ver todas las cotizaciones.
-        Prefetch related items for efficiency.
+        Permite a los usuarios normales ver solo sus propias cotizaciones.
+        El filtrado, búsqueda y ordenamiento se aplicarán sobre el queryset base devuelto.
         """
-        queryset = Quote.objects.all().select_related('user').prefetch_related('items') # Mejora el rendimiento
 
-        if self.request.user.is_staff:
-            # Los administradores pueden ver todas las cotizaciones
-            return queryset.order_by('-created_at') # Ordenar por fecha de creación descendente
-        else:
-            # Los usuarios normales solo ven las cotizaciones asociadas a ellos
-            return queryset.filter(user=self.request.user).order_by('-created_at')
-        # queryset = Quote.objects.all()
-        # return queryset
+        # Usar select_related y prefetch_related para optimizar consultas
+        # al obtener datos relacionados (usuario, items, producto del item, etc.)
+        queryset = Quote.objects.all().select_related(
+            'user', 'user__profile'
+        ).prefetch_related(
+            'items', 'items__product'
+        )
+
+        # Si el usuario NO es staff, filtramos para que solo vea lo suyo.
+        # Si ES staff, no aplicamos este filtro, por lo que verá todo.
+        # Los filtros de la URL (status, search) serán aplicados por DRF
+        # después de que este método devuelva el queryset.
+        if not self.request.user.is_staff:
+            queryset = queryset.filter(user=self.request.user)
+            
+        return queryset
 
     @action(detail=True, methods=['post'])
     def finalize_sale(self, request, pk=None):
         """
         Finaliza la venta de una cotización (cambia el estado a 'paid').
         Solo accesible para administradores.
+        La lógica de descuento de stock se encuentra aquí.
         """
         if not self.request.user.is_staff:
-            return Response({"error": "Unauthorized. Only administrators can finalize sales."}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"error": "No autorizado para realizar esta acción."}, status=status.HTTP_403_FORBIDDEN)
+
+        quote = self.get_object()
+
+        if quote.status != 'pending':
+            return Response({"error": f"La cotización ya no está pendiente. Estado actual: {quote.status}."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            # Usamos get_object() que ya aplica los permisos (aunque para admin permite todo)
-            # Aseguramos que obtenemos la cotización correcta
-            quote = self.get_object()
-        except Quote.DoesNotExist:
-            return Response({"error": "Quote not found."}, status=status.HTTP_404_NOT_FOUND)
+            with transaction.atomic():
+                # --- LÓGICA DE DESCUENTO DE STOCK ---
+                # Esta lógica ahora vive aquí, no en create_quote.
+                for item in quote.items.all():
+                    # Bloquear la fila del producto para evitar race conditions
+                    product = Product.objects.select_for_update().get(pk=item.product.pk)
+                    
+                    if product.stock < item.quantity:
+                        # Si no hay suficiente stock, revertir toda la transacción
+                        raise ValueError(f"Stock insuficiente para finalizar la venta del producto '{product.name}'. Disponible: {product.stock}, Solicitado: {item.quantity}")
+                    
+                    # Si hay stock, descontarlo
+                    product.stock -= item.quantity
+                    product.save()
+                
+                # Cambiar el estado de la cotización
+                quote.status = 'paid'
+                quote.save()
+                
+                # Aquí podrías añadir lógica adicional como enviar un correo de confirmación de pago.
 
-        # Validar el estado actual de la cotización
-        if quote.status != 'pending':
-            return Response({"error": f"Quote is not pending. Current status: {quote.status}"}, status=status.HTTP_400_BAD_REQUEST)
+        except ValueError as e: # Captura el error de stock que lanzamos
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e: # Captura cualquier otro error inesperado
+            # Considera loguear el error real
+            # logger.error(f"Error finalizando la venta para quote {quote.id}: {e}")
+            return Response({"error": "Ocurrió un error inesperado al procesar la venta."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # Usamos una transacción atómica para la actualización del estado
-        with transaction.atomic():
-            for item in quote.items.all(): # Iterar sobre los QuoteItems de la cotización
-                product = Product.objects.select_for_update().get(pk=item.product.pk) # Bloqueo para concurrencia
-                if product.stock < item.quantity:
-                    # No hay suficiente stock para este item.
-                    # Revertir la transacción y devolver un error.
-                    transaction.set_rollback(True) # Asegura que la transacción se revierte
-                    return Response(
-                        {"error": f"Insufficient stock to finalize sale for product '{product.name}'. Available: {product.stock}, Requested in quote: {item.quantity}"},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                # Si hay stock, descontarlo
-                product.stock -= item.quantity
-                product.save()
-            quote.status = 'paid'
-            quote.save()
-            # Si necesitas hacer algo más al finalizar la venta (ej. generar factura, enviar correo)
-            # agrégalo aquí dentro de la transacción.
-
-        # No es necesario descontar stock aquí, se hizo en create_quote.
-        # Si el stock solo se descuenta al finalizar la venta, mueve esa lógica aquí.
-        # PERO, eso significa que el stock no está reservado durante el estado 'pending',
-        # lo cual puede llevar a problemas de sobreventa. Descontar al crear la quote
-        # (o al menos reservar de alguna forma) es mejor para control de inventario.
-
-        serializer = QuoteSerializer(quote) # Serializar la cotización actualizada
-        return Response({"message": f"Sale for quote {quote.pk} finalized successfully. Status changed to paid, 'quote': {serializer.data}"}, status=status.HTTP_200_OK)
+        serializer = QuoteSerializer(quote)
+        return Response({
+            "message": f"Venta para la cotización #{quote.pk} finalizada exitosamente. Estado cambiado a 'pagado'.", 
+            "quote": serializer.data
+        }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'])
     def cancel_quote(self, request, pk=None):
         """
-        Cancela una cotización y restaura el stock.
-        Puede ser accesible para el usuario (si está pendiente) o para el admin.
+        Cancela una cotización. Si el stock fue descontado (ej. de un estado 'paid'), lo restaura.
+        Si está 'pending', solo cambia el estado.
         """
-        # Quien puede cancelar? Usuario si está pendiente? Admin siempre?
-        # Aquí permitiremos al admin cancelar cualquier cotización,
-        # y al usuario cancelar sus propias cotizaciones si están pendientes.
+        quote = self.get_object()
 
-        try:
-            # get_object aplica el filtro por usuario si no es admin
-            quote = self.get_object()
-        except Quote.DoesNotExist:
-            return Response({"error": "Quote not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        # Validar quién está cancelando y el estado
         if not self.request.user.is_staff and quote.user != self.request.user:
-            return Response({"error": "Unauthorized to cancel this quote."}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"error": "No autorizado para cancelar esta cotización."}, status=status.HTTP_403_FORBIDDEN)
 
-        if quote.status not in ['pending']: # Solo se pueden cancelar cotizaciones pendientes
-            return Response({"error": f"Quote cannot be cancelled. Current status: {quote.status}"}, status=status.HTTP_400_BAD_REQUEST)
+        # Se puede cancelar si está 'pending' o 'paid' (para un reembolso)
+        if quote.status not in ['pending', 'paid']:
+            return Response({"error": f"La cotización no se puede cancelar. Estado actual: {quote.status}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Guardar el estado anterior para saber si debemos restaurar stock
+        previous_status = quote.status
 
         with transaction.atomic():
-            # Cambiar el estado a 'cancelled'
             quote.status = 'cancelled'
             quote.save()
 
-            # Restaurar el stock que fue descontado al crear la cotización
-            # Solo si el stock fue descontado al crear la cotización (como lo implementamos)
-            for item in quote.items.all():
-                product = item.product
-                # Opcional: usar select_for_update() si hay mucha concurrencia en restaurar stock
-                product.stock += item.quantity
-                product.save()
+            # Restaurar stock SOLO si venía de un estado donde el stock ya había sido descontado
+            # (En nuestro nuevo flujo, esto es solo si el estado era 'paid')
+            if previous_status == 'paid':
+                for item in quote.items.all():
+                    # select_for_update también es bueno aquí
+                    product = Product.objects.select_for_update().get(pk=item.product.pk)
+                    product.stock += item.quantity
+                    product.save()
 
         serializer = QuoteSerializer(quote)
-        return Response({"message": f"Quote {quote.pk} cancelled successfully. Stock restored.", "quote": serializer.data}, status=status.HTTP_200_OK)
+        return Response({
+            "message": f"Cotización #{quote.pk} cancelada exitosamente." + (" Stock restaurado." if previous_status == 'paid' else ""), 
+            "quote": serializer.data
+        }, status=status.HTTP_200_OK)
+
+    # --- NUEVA ACCIÓN SUGERIDA ---
+    @action(detail=True, methods=['post'], url_path='mark-as-shipped')
+    def mark_as_shipped(self, request, pk=None):
+        """
+        Marca una cotización pagada como enviada. Solo para administradores.
+        """
+        if not self.request.user.is_staff:
+            return Response({"error": "No autorizado para realizar esta acción."}, status=status.HTTP_403_FORBIDDEN)
+
+        quote = self.get_object()
+        if quote.status != 'paid':
+            return Response({"error": f"Solo se pueden marcar como enviadas las cotizaciones pagadas. Estado actual: {quote.status}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        quote.status = 'shipped'
+        quote.save()
+        
+        # Aquí podrías añadir lógica para enviar un correo de notificación de envío al cliente.
+
+        serializer = self.get_serializer(quote)
+        return Response({
+            "message": f"Cotización #{quote.pk} marcada como enviada.",
+            "quote": serializer.data
+        }, status=status.HTTP_200_OK)

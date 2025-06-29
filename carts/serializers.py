@@ -2,7 +2,7 @@
 from rest_framework import serializers
 from .models import Cart, CartItem, Quote, QuoteItem
 from products.models import Product # Asegúrate de importar Product
-
+from accounts.serializers import UserProfileSerializer
 class CartItemSerializer(serializers.ModelSerializer):
     product_name = serializers.ReadOnlyField(source='product.name')
     product_id = serializers.ReadOnlyField(source='product.id')
@@ -59,8 +59,9 @@ class QuoteSerializer(serializers.ModelSerializer):
     # Incluir los items de la cotización anidados
     items = QuoteItemSerializer(many=True, read_only=True)
     user = serializers.ReadOnlyField(source='user.username') # Mostrar el nombre de usuario
+    user_detail = UserProfileSerializer(source='user.profile', read_only=True) 
 
     class Meta:
         model = Quote
-        fields = ['id', 'user', 'cart', 'created_at', 'updated_at', 'status', 'total', 'items']
+        fields = ['id', 'user', 'cart', 'created_at', 'updated_at', 'status', 'total', 'items', 'user_detail']
         read_only_fields = ('user', 'cart', 'created_at', 'updated_at', 'total', 'items') # No permitir modificar estos campos

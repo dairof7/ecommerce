@@ -16,11 +16,11 @@ class UserSerializer(serializers.ModelSerializer):
         user.set_password(password)
         user.save()
         return user
-
 class UserProfileSerializer(serializers.ModelSerializer):
     user = serializers.ReadOnlyField(source='user.username')
     email = serializers.ReadOnlyField(source='user.email')
-
+    is_staff = serializers.ReadOnlyField(source='user.is_staff')
+    
     class Meta:
         model = UserProfile
-        fields = '__all__'
+        fields = ('user', 'address', 'document', 'phone', 'is_staff', 'email')
