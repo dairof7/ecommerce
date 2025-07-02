@@ -27,10 +27,17 @@ class CartItem(models.Model):
         return f"{self.quantity} x {self.product.name} in Cart {self.cart.id}"
 
 class Quote(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='quotes')
-    # Mantener el enlace al carrito es opcional, pero puede dar contexto de qué carrito lo generó
-    # Si el carrito original se elimina, este enlace podría romperse, considera si es necesario.
-    # Por ahora, lo mantendremos.
+    user = models.ForeignKey(User,
+    on_delete=models.SET_NULL, # Si se borra el usuario, la cotización no se borra, solo se desvincula.
+    null=True, 
+    blank=True, 
+    related_name='quotes',
+    verbose_name="Usuario Registrado (Opcional)"
+    )
+    customer_name = models.CharField("Nombre del Cliente (invitado)", max_length=150, blank=True)
+    customer_email = models.EmailField("Email del Cliente (invitado)", blank=True)
+    customer_document = models.CharField("Documento del Cliente (invitado)", max_length=30, blank=True)
+    customer_phone = models.CharField("Teléfono del Cliente (invitado)", max_length=30, blank=True)
     cart = models.ForeignKey(Cart, on_delete=models.SET_NULL, null=True, blank=True) # Usar SET_NULL si el carrito se elimina
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -48,8 +55,22 @@ class Quote(models.Model):
     # El total se calculará y almacenará al crear la cotización
     total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
+    class Meta: # Añadir Meta si no la tienes
+        verbose_name = "Cotización / Pedido"
+        verbose_name_plural = "Cotizaciones / Pedidos"
+        ordering = ['-created_at']
+
+    def get_customer_identifier(self):
+        if self.customer_name:
+            return f"{self.customer_name} (Invitado)"
+        if self.customer_email:
+            return f"{self.customer_email} (Invitado)"
+        if self.user:
+            return self.user.email # O self.user.username
+        return f"Anónimo (ID: {self.pk})"
+
     def __str__(self):
-        return f"Quote {self.pk} - {self.status} for {self.user.username}"
+        return f"Cotización #{self.pk} - {self.get_status_display()} para {self.get_customer_identifier()}"
 
 class QuoteItem(models.Model):
     quote = models.ForeignKey(Quote, related_name='items', on_delete=models.CASCADE)
