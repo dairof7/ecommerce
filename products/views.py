@@ -5,7 +5,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from .filters import ProductFilter
 from django.db.models import Count, Q
 from rest_framework import views, response
-
+from django.db.models import Case, When, Value, IntegerField
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
@@ -37,7 +37,14 @@ class TagViewSet(viewsets.ModelViewSet):
 #     ordering_fields = ['name', 'sale_price']
 
 class ProductViewSet(viewsets.ModelViewSet):
-    queryset = Product.objects.all().order_by('-is_featured', '-discount', '-created_at') # Ordenar por destacados primero y luego por fecha de creación
+    # queryset = Product.objects.all().order_by('-is_featured', '-discount', '-stock','-created_at') # Ordenar por destacados primero y luego por fecha de creación
+    queryset = Product.objects.annotate(
+    stock_empty=Case(
+        When(stock=0, then=Value(1)),
+        default=Value(0),
+        output_field=IntegerField(),
+    )
+).order_by('stock_empty', '-is_featured', '-discount', '-created_at')
     serializer_class = ProductSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter, DjangoFilterBackend]
     search_fields = ['name', 'description', 'category__name', 'subcategory__name', 'tags__name']
