@@ -10,6 +10,10 @@ from django.db import transaction # Importar para transacciones atómicas
 from decimal import Decimal
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 from django_filters.rest_framework import DjangoFilterBackend
+from django.contrib.auth import get_user_model
+User = get_user_model()
+
+
 class CartViewSet(viewsets.ModelViewSet):
     serializer_class = CartSerializer
     permission_classes = [IsAuthenticated]
@@ -215,73 +219,88 @@ class CartViewSet(viewsets.ModelViewSet):
         cart_item.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-    @action(detail=False, methods=['post']) # Cambiamos a detail=False
+    @action(detail=False, methods=['post'])
     def create_quote(self, request):
-        """
-        Crea una cotización a partir del carrito actual del usuario autenticado.
-        Valida stock, crea QuoteItems, calcula total, descuenta stock y vacía el carrito.
-        """
-        cart = self.get_queryset().first() # Obtenemos el carrito del usuario autenticado
+
+        cart = self.get_queryset().first()
         if not cart or not cart.items.exists():
-            return Response({"error": "User does not have a cart or cart is empty."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "El carrito está vacío."}, status=status.HTTP_400_BAD_REQUEST)
 
-        cart_items = cart.items.all()
-
+        user_id_from_payload = request.data.get('user_id')
         customer_data = request.data.get('customer', {})
+        
+        quote_user = None # El usuario que quedará asociado a la Quote
+
+        # --- LÓGICA DE ASIGNACIÓN DE USUARIO REVISADA ---
+        # 1. Si se proporciona un ID de usuario en el payload (venta de POS para un cliente existente)
+        if user_id_from_payload:
+            # Solo un staff puede asignar una venta a otro usuario
+            if not request.user.is_staff:
+                return Response({"error": "No tienes permiso para crear una cotización para otro usuario."}, status=status.HTTP_403_FORBIDDEN)
+            
+            try:
+                # Obtener el cliente al que se le asignará la cotización
+                quote_user = User.objects.get(pk=user_id_from_payload)
+            except User.DoesNotExist:
+                return Response({"error": f"El cliente con ID {user_id_from_payload} no fue encontrado."}, status=status.HTTP_400_BAD_REQUEST)
+            except (ValueError, TypeError):
+                return Response({"error": "El user_id proporcionado no es válido."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 2. Si no se proporciona un ID de usuario, y el usuario logueado es un cliente normal
+        elif request.user.is_authenticated and not request.user.is_staff:
+            quote_user = request.user
+
+        # 3. Si el usuario logueado es un staff y NO proporciona un user_id,
+        # O si la solicitud es de un usuario no autenticado (si lo permitieras),
+        # entonces quote_user permanece None, y se crea como una venta de invitado.
+        
+        # --- FIN LÓGICA DE ASIGNACIÓN ---
+
+        # Rellenar datos del cliente si no se proporcionaron y se asoció un usuario
         customer_name = customer_data.get('name', '')
         customer_email = customer_data.get('email', '')
         customer_document = customer_data.get('document', '')
         customer_phone = customer_data.get('phone', '')
 
+        if quote_user and not customer_name and not customer_email:
+            customer_name = quote_user.get_full_name() or quote_user.username
+            customer_email = quote_user.email
+            if hasattr(quote_user, 'profile'):
+                customer_document = quote_user.profile.document or ''
+                customer_phone = quote_user.profile.phone or ''
+
         try:
             with transaction.atomic():
-                # --- Lógica para asociar usuario o datos de invitado ---
-                quote_user = None
-                if request.user.is_authenticated and not request.user.is_staff:
-                    # Si es un cliente normal comprando online, el 'user' es él mismo.
-                    quote_user = request.user
-                
-                # Crear la cotización
                 quote = Quote.objects.create(
-                    user=quote_user, # Será el usuario logueado o None
+                    user=quote_user, # Asignar el usuario encontrado/logueado, o None
                     cart=cart,
                     status='pending',
                     total=Decimal('0.00'),
-                    # Guardar datos del cliente invitado
                     customer_name=customer_name,
                     customer_email=customer_email,
                     customer_document=customer_document,
                     customer_phone=customer_phone,
                 )
-
-                # ... (resto de la lógica para crear QuoteItems y calcular total como antes) ...
+                
+                # ... (código para crear QuoteItems y calcular el total) ...
+                # Esta parte no necesita cambios
                 quote_total = Decimal('0.00')
+                cart_items = cart.items.all()
                 quote_items_to_create = []
                 for item in cart_items:
-                    product = item.product
-                    price_at_quote = product.final_sale_price
-                    quote_item_instance = QuoteItem(
-                        quote=quote,
-                        product=product,
-                        quantity=item.quantity,
-                        price_at_quote=price_at_quote
-                    )
+                    price_at_quote = item.product.final_sale_price
+                    quote_item_instance = QuoteItem(quote=quote, product=item.product, quantity=item.quantity, price_at_quote=price_at_quote)
                     quote_items_to_create.append(quote_item_instance)
                     quote_total += quote_item_instance.subtotal
                 
                 QuoteItem.objects.bulk_create(quote_items_to_create)
                 quote.total = quote_total
                 quote.save()
-                # --- Fin lógica QuoteItems ---
-
-                # Vaciar el carrito
                 cart_items.delete()
 
         except Exception as e:
-            # ... (manejo de errores) ...
-            return Response({"error": f"Ocurrió un error inesperado: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": f"Ocurrió un error inesperado al crear la cotización: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # La lógica de descuento de stock se mueve a finalize_sale
         serializer = QuoteSerializer(quote, context={'request': request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -378,7 +397,6 @@ class QuoteViewSet(viewsets.ModelViewSet):
                     product.stock -= item.quantity
                     product.save()
                 
-                print(f"Finalizando venta para cotización #{quote.pk}...")
                 # Cambiar el estado de la cotización
                 quote.status = 'paid'
                 quote.save()
@@ -393,7 +411,6 @@ class QuoteViewSet(viewsets.ModelViewSet):
             return Response({"error": "Ocurrió un error inesperado al procesar la venta."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         serializer = self.get_serializer(quote)
-        print(serializer.data)
         return Response({
             "message": f"Venta para la cotización #{quote.pk} finalizada exitosamente. Estado cambiado a 'pagado'.", 
             "quote": serializer.data
@@ -455,7 +472,6 @@ class QuoteViewSet(viewsets.ModelViewSet):
         # Aquí podrías añadir lógica para enviar un correo de notificación de envío al cliente.
 
         serializer = self.get_serializer(quote)
-        print(serializer.data)
         
         return Response({
             "message": f"Cotización #{quote.pk} marcada como enviada.",
