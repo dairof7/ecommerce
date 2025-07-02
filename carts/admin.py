@@ -33,7 +33,7 @@ class QuoteAdmin(admin.ModelAdmin):
 
     fieldsets = (
         (None, {
-            'fields': ('user', 'cart', 'created_at', 'updated_at', 'status', 'total')
+            'fields': ('user','customer_name','customer_email','customer_document','customer_phone', 'cart', 'created_at', 'updated_at', 'status', 'total')
         }),
         # Los items se mostrarán a través del inline
     )

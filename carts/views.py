@@ -222,67 +222,67 @@ class CartViewSet(viewsets.ModelViewSet):
         Valida stock, crea QuoteItems, calcula total, descuenta stock y vacía el carrito.
         """
         cart = self.get_queryset().first() # Obtenemos el carrito del usuario autenticado
-        if not cart:
-            return Response({"error": "User does not have a cart or cart is empty."}, status=status.HTTP_404_NOT_FOUND)
+        if not cart or not cart.items.exists():
+            return Response({"error": "User does not have a cart or cart is empty."}, status=status.HTTP_400_BAD_REQUEST)
 
         cart_items = cart.items.all()
 
-        if not cart_items.exists():
-            return Response({"error": "Cart is empty. Cannot create a quote."}, status=status.HTTP_400_BAD_REQUEST)
+        customer_data = request.data.get('customer', {})
+        customer_name = customer_data.get('name', '')
+        customer_email = customer_data.get('email', '')
+        customer_document = customer_data.get('document', '')
+        customer_phone = customer_data.get('phone', '')
 
-        # Usamos una transacción atómica para asegurar que si algo falla,
-        # todos los cambios (creación de quote/items, descuento de stock) se revierten.
         try:
             with transaction.atomic():
-                # 1. Crear la cotización (estado inicial 'pending', total 0 por ahora)
-                # Se asocia al usuario y opcionalmente al carrito que la originó.
+                # --- Lógica para asociar usuario o datos de invitado ---
+                quote_user = None
+                if request.user.is_authenticated and not request.user.is_staff:
+                    # Si es un cliente normal comprando online, el 'user' es él mismo.
+                    quote_user = request.user
+                
+                # Crear la cotización
                 quote = Quote.objects.create(
-                    user=request.user,
-                    cart=cart, # Guardamos la referencia al carrito que originó la cotización
+                    user=quote_user, # Será el usuario logueado o None
+                    cart=cart,
                     status='pending',
-                    total=Decimal('0.00') # Inicializar con Decimal
+                    total=Decimal('0.00'),
+                    # Guardar datos del cliente invitado
+                    customer_name=customer_name,
+                    customer_email=customer_email,
+                    customer_document=customer_document,
+                    customer_phone=customer_phone,
                 )
 
-                # 2. Crear QuoteItems y calcular el total
-                quote_total = Decimal('0.00') # Usar Decimal para el total
+                # ... (resto de la lógica para crear QuoteItems y calcular total como antes) ...
+                quote_total = Decimal('0.00')
                 quote_items_to_create = []
                 for item in cart_items:
                     product = item.product
-
-                    # Usar la propiedad final_sale_price del modelo Product
-                    price_at_quote = product.final_sale_price 
-
+                    price_at_quote = product.final_sale_price
                     quote_item_instance = QuoteItem(
                         quote=quote,
                         product=product,
                         quantity=item.quantity,
-                        price_at_quote=price_at_quote # Este es el precio con todos los descuentos aplicados
+                        price_at_quote=price_at_quote
                     )
                     quote_items_to_create.append(quote_item_instance)
-                    quote_total += quote_item_instance.subtotal # subtotal usará este price_at_quote
-
-                    
-
-                # 3. Bulk create QuoteItems para eficiencia (esto los guarda en la BD)
+                    quote_total += quote_item_instance.subtotal
+                
                 QuoteItem.objects.bulk_create(quote_items_to_create)
-
-                # 4. Actualizar el total en la cotización
                 quote.total = quote_total
-                quote.save() # Guardar la cotización con el total actualizado
+                quote.save()
+                # --- Fin lógica QuoteItems ---
 
-                # 5. Vaciar el carrito después de generar la cotización
+                # Vaciar el carrito
                 cart_items.delete()
 
-        except ValueError as e: # Capturar el ValueError que levantamos antes
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e: # Capturar cualquier otra excepción durante la transacción
-            # Log el error real para depuración interna
-            return Response({"error": "An unexpected error occurred while creating the quote."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            # ... (manejo de errores) ...
+            return Response({"error": f"Ocurrió un error inesperado: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # Si la transacción fue exitosa, serializar y retornar la cotización
-        # El QuoteSerializer debería tener `items = QuoteItemSerializer(many=True, read_only=True)`
-        # para que los items recién creados se incluyan.
-        serializer = QuoteSerializer(quote)
+        # La lógica de descuento de stock se mueve a finalize_sale
+        serializer = QuoteSerializer(quote, context={'request': request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
@@ -359,7 +359,6 @@ class QuoteViewSet(viewsets.ModelViewSet):
             return Response({"error": "No autorizado para realizar esta acción."}, status=status.HTTP_403_FORBIDDEN)
 
         quote = self.get_object()
-
         if quote.status != 'pending':
             return Response({"error": f"La cotización ya no está pendiente. Estado actual: {quote.status}."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -370,7 +369,7 @@ class QuoteViewSet(viewsets.ModelViewSet):
                 for item in quote.items.all():
                     # Bloquear la fila del producto para evitar race conditions
                     product = Product.objects.select_for_update().get(pk=item.product.pk)
-                    
+                                        
                     if product.stock < item.quantity:
                         # Si no hay suficiente stock, revertir toda la transacción
                         raise ValueError(f"Stock insuficiente para finalizar la venta del producto '{product.name}'. Disponible: {product.stock}, Solicitado: {item.quantity}")
@@ -379,6 +378,7 @@ class QuoteViewSet(viewsets.ModelViewSet):
                     product.stock -= item.quantity
                     product.save()
                 
+                print(f"Finalizando venta para cotización #{quote.pk}...")
                 # Cambiar el estado de la cotización
                 quote.status = 'paid'
                 quote.save()
@@ -392,7 +392,8 @@ class QuoteViewSet(viewsets.ModelViewSet):
             # logger.error(f"Error finalizando la venta para quote {quote.id}: {e}")
             return Response({"error": "Ocurrió un error inesperado al procesar la venta."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        serializer = QuoteSerializer(quote)
+        serializer = self.get_serializer(quote)
+        print(serializer.data)
         return Response({
             "message": f"Venta para la cotización #{quote.pk} finalizada exitosamente. Estado cambiado a 'pagado'.", 
             "quote": serializer.data
@@ -454,6 +455,8 @@ class QuoteViewSet(viewsets.ModelViewSet):
         # Aquí podrías añadir lógica para enviar un correo de notificación de envío al cliente.
 
         serializer = self.get_serializer(quote)
+        print(serializer.data)
+        
         return Response({
             "message": f"Cotización #{quote.pk} marcada como enviada.",
             "quote": serializer.data

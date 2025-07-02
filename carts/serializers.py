@@ -31,17 +31,17 @@ class CartItemSerializer(serializers.ModelSerializer):
         return None # O una URL de placeholder: 'https://via.placeholder.com/150'
 
 class CartSerializer(serializers.ModelSerializer):
-    items = CartItemSerializer(many=True, read_only=True)
-    # Puedes añadir un campo para el total del carrito si lo deseas
-    # cart_total = serializers.SerializerMethodField()
+    # items = CartItemSerializer(many=True, read_only=True)
+    items = serializers.SerializerMethodField()
 
     class Meta:
         model = Cart
         fields = ['id', 'user', 'items', 'created_at', 'updated_at']
-        read_only_fields = ('user', 'created_at', 'updated_at') # El usuario y fechas no se modifican directamente
+        read_only_fields = ('user', 'itemCount', 'totalAmount', 'created_at', 'updated_at')
 
-    # def get_cart_total(self, obj):
-    #    return sum(item.subtotal for item in obj.items.all())
+    def get_items(self, obj):
+        ordered_items = obj.items.all().order_by('product__name') # O 'added_at'
+        return CartItemSerializer(ordered_items, many=True, context=self.context).data
 
 
 class QuoteItemSerializer(serializers.ModelSerializer):
@@ -58,10 +58,33 @@ class QuoteItemSerializer(serializers.ModelSerializer):
 class QuoteSerializer(serializers.ModelSerializer):
     # Incluir los items de la cotización anidados
     items = QuoteItemSerializer(many=True, read_only=True)
-    user = serializers.ReadOnlyField(source='user.username') # Mostrar el nombre de usuario
+    user_email = serializers.ReadOnlyField(source='user.email')
     user_detail = UserProfileSerializer(source='user.profile', read_only=True) 
 
+    # class Meta:
+    #     model = Quote
+    #     fields = ['id', 'user', 'cart', 'created_at', 'updated_at', 'status', 'total', 'items', 'user_detail']
+    #     read_only_fields = ('user', 'cart', 'created_at', 'updated_at', 'total', 'items') # No permitir modificar estos campos
     class Meta:
         model = Quote
-        fields = ['id', 'user', 'cart', 'created_at', 'updated_at', 'status', 'total', 'items', 'user_detail']
-        read_only_fields = ('user', 'cart', 'created_at', 'updated_at', 'total', 'items') # No permitir modificar estos campos
+        fields = [
+            'id', 
+            'user', # Sigue siendo útil para la asociación
+            'user_email', # Para mostrar
+            # Nuevos campos de cliente invitado
+            'customer_name',
+            'customer_email',
+            'customer_document',
+            'customer_phone',
+            # Campos existentes
+            'cart', 
+            'created_at', 
+            'updated_at', 
+            'status', 
+            'total', 
+            'items',
+            'user_detail'
+        ]
+        # Hacemos 'user' de solo lectura porque se establecerá automáticamente
+        # si la solicitud la hace un usuario autenticado, no se debe poder asignar manualmente.
+        read_only_fields = ['user', 'cart', 'created_at', 'updated_at', 'total', 'items', 'user_email']
