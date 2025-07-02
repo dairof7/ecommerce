@@ -7,15 +7,16 @@ class CartItemSerializer(serializers.ModelSerializer):
     product_name = serializers.ReadOnlyField(source='product.name')
     product_id = serializers.ReadOnlyField(source='product.id')
     product_sale_price = serializers.ReadOnlyField(source='product.sale_price')
+    product_final_price = serializers.ReadOnlyField(source='product.final_sale_price')
     # Incluir el subtotal del item del carrito
     subtotal = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     product_image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = CartItem
-        fields = ['id', 'product', 'product_name', 'quantity', 'product_sale_price', 'subtotal', 'product_image_url', 'product_id']
+        fields = ['id', 'product', 'product_name', 'quantity', 'product_sale_price','product_final_price', 'subtotal', 'product_image_url', 'product_id']
         # Al añadir/actualizar un item, solo permitimos enviar product y quantity
-        read_only_fields = ('cart', 'product_name', 'product_sale_price', 'subtotal', 'product_image') # No permitir modificar estos campos directamente
+        read_only_fields = ('cart', 'product_name', 'product_sale_price', 'product_final_price','subtotal', 'product_image') # No permitir modificar estos campos directamente
         extra_kwargs = {
             'product': {'write_only': True} # El ID del producto se envía al crear/actualizar
         }

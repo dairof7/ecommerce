@@ -174,9 +174,9 @@ class CartViewSet(viewsets.ModelViewSet):
         Requiere 'product_id' y 'quantity' en el cuerpo de la solicitud.
         """
         cart = self.get_queryset().first() # Obtenemos el carrito del usuario autenticado
-        
         product_id = request.data.get('product_id')
         quantity = int(request.data.get('quantity', 0)) # Cantidad esperada
+        print('aqui', quantity)
         if quantity <= 0:
             return Response({"error": "Quantity must be positive."}, status=status.HTTP_400_BAD_REQUEST)
         try:
@@ -197,7 +197,8 @@ class CartViewSet(viewsets.ModelViewSet):
             cart_item.quantity = total_quantity_requested # Actualiza la cantidad total
             cart_item.save()
 
-        serializer = CartItemSerializer(cart_item)
+        cart.refresh_from_db() # Para asegurar que cualquier cálculo en el modelo Cart se actualice
+        serializer = self.get_serializer(cart)
         return Response(serializer.data, status=status.HTTP_200_OK) # Usamos 200 OK para actualizar, 201 Created para crear
 
     @action(detail=False, methods=['delete'], url_path=r'remove_item/(?P<item_id>\d+)')
@@ -217,7 +218,10 @@ class CartViewSet(viewsets.ModelViewSet):
             return Response({"error": "Item not found in cart or does not belong to this cart."}, status=status.HTTP_404_NOT_FOUND)
 
         cart_item.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        # return Response(status=status.HTTP_204_NO_CONTENT)
+        cart.refresh_from_db() # Para asegurar que cualquier cálculo en el modelo Cart se actualice
+        serializer = self.get_serializer(cart)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'])
     def create_quote(self, request):
