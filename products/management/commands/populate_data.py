@@ -96,7 +96,7 @@ class Command(BaseCommand):
             name = f"{fake.bs().capitalize()} {subcategory.name} Pro v{random.randint(1, 10)}"
             description = fake.paragraph(nb_sentences=5)
             purchase_price = Decimal(random.uniform(
-                10, 500)).quantize(Decimal("0.01"))
+                10000, 500000)).quantize(Decimal("0.01"))
             sale_price = purchase_price * \
                 Decimal(random.uniform(1.2, 2.5)).quantize(Decimal("0.01"))
             stock = random.randint(0, 100)
