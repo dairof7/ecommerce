@@ -38,11 +38,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copiar el script de entrypoint y darle permisos de ejecución
-COPY entrypoint.sh .
+COPY . .
 RUN chmod +x entrypoint.sh
 
 # Copiar el resto del código de la aplicación
-COPY . .
 # Exponer el puerto que Gunicorn usará
 EXPOSE 8000
 
