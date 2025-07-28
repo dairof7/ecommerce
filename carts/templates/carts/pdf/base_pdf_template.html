@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Documento{% endblock %}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 1.5cm;
+            @bottom-center {
+                content: "Página " counter(page) " de " counter(pages);
+                font-size: 10px;
+                color: #555;
+            }
+        }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
+            font-size: 11px;
+            color: #333;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 2px solid #260d33;
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+        }
+        .header-left, .header-right {
+            width: 48%;
+        }
+        .header-right {
+            text-align: right;
+        }
+        .logo {
+            max-width: 180px; /* Ajusta el tamaño de tu logo */
+            margin-bottom: 10px;
+        }
+        .company-name {
+            font-size: 1.6em;
+            font-weight: bold;
+            color: #260d33;
+        }
+        .document-title {
+            font-size: 2em;
+            font-weight: bold;
+            color: #003f69;
+        }
+        .info-section {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 30px;
+        }
+        .info-box {
+            width: 48%;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        .info-box h3 {
+            margin-top: 0;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+            color: #106b87;
+        }
+        .items-table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-top: 20px; 
+            font-size: 11px;
+        }
+        .items-table th, .items-table td { 
+            border: 1px solid #ccc; 
+            padding: 8px; 
+            text-align: left; 
+        }
+        .items-table th { 
+            background-color: #f2f2f2;
+            color: #333;
+            font-weight: bold;
+        }
+        .items-table .text-right { text-align: right; }
+        .totals-section {
+            margin-top: 20px;
+            float: right;
+            width: 45%;
+        }
+        .totals-table {
+            width: 100%;
+        }
+        .totals-table td {
+            padding: 5px 8px;
+        }
+        .grand-total {
+            font-weight: bold; 
+            font-size: 1.3em;
+            color: #003f69;
+            background-color: #f0f8ff;
+            border-top: 2px solid #003f69;
+        }
+        .footer-notes {
+            clear: both;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            font-size: 10px;
+            color: #555;
+        }
+        .footer-notes p {
+            margin: 4px 0;
+        }
+        .highlight-box {
+            background-color: #f9f9f9;
+            border: 1px solid #eee;
+            padding: 10px;
+            margin-top: 15px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    {% load date_filters currency_filters %} 
+    <div class="header">
+        <div class="header-left">
+            {% if shop_info.logo_url %}
+            <img src="{{ shop_info.logo_url }}" alt="Logo de {{ shop_info.nombre_empresa }}" class="logo">
+            {% else %}
+            <div class="company-name">{{ shop_info.nombre_empresa }}</div>
+            {% endif %}
+            <div>{{ shop_info.direccion }}</div>
+            <div>Teléfono: {{ shop_info.telefono }}</div>
+            <div>Email: {{ shop_info.correo }}</div>
+        </div>
+        <div class="header-right">
+            {% block document_header %}{% endblock %}
+        </div>
+    </div>
+
+    <div class="info-section">
+        {% block info_section %}{% endblock %}
+    </div>
+
+    <table class="items-table">
+        <thead>
+            <tr>
+                <th style="width: 50%;">Descripción del Producto</th>
+                <th style="width: 15%;" class="text-right">Cantidad</th>
+                <th style="width: 15%;" class="text-right">Precio Unitario</th>
+                <th style="width: 20%;" class="text-right">Subtotal</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in document.items.all %}
+            <tr>
+                <td>{{ item.product.name }}</td>
+                <td class="text-right">{{ item.quantity }}</td>
+                <td class="text-right">{{ item.price_at_quote|currency }}</td>
+                <td class="text-right">{{ item.subtotal|currency }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="totals-section">
+        <table class="totals-table">
+            <tr>
+                <td>Subtotal:</td>
+                <td class="text-right">{{ document.total|currency }}</td>
+            </tr>
+            {% block totals_extra_rows %}{% endblock %}
+            <tr class="grand-total">
+                <td>TOTAL:</td>
+                <td class="text-right">{{ document.total|currency }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="footer-notes">
+        {% block footer_notes %}{% endblock %}
+        <br>
+        <p style="text-align: center; font-weight: bold;">{% block footer_thanks %}¡Gracias por su preferencia!{% endblock %}</p>
+    </div>
+
+</body>
+</html>

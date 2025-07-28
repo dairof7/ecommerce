@@ -40,9 +40,33 @@ INSTALLED_APPS = [
     'django_filters', # Para filtros avanzados
     'drf_spectacular',
     'rest_framework_simplejwt.token_blacklist',
+    'django_celery_results',
 ]
 
+SHOP_COMPANY_NAME = os.environ.get('SHOP_COMPANY_NAME', default='Mi Tienda S.A.S.')
+SHOP_COMPANY_NIT = os.environ.get('SHOP_COMPANY_NIT', default='000.000.000-0')
+SHOP_SELLER_NAME = os.environ.get('SHOP_SELLER_NAME', default='Nombre del Vendedor')
+SHOP_SELLER_ID = os.environ.get('SHOP_SELLER_ID', default='00000000')
+SHOP_ADDRESS = os.environ.get('SHOP_ADDRESS', default='Dirección no especificada')
+SHOP_PHONE = os.environ.get('SHOP_PHONE', default='(000) 000-0000')
+SHOP_EMAIL = os.environ.get('SHOP_EMAIL', default='contacto@mitienda.com')
+SHOP_LOGO_URL = os.environ.get('SHOP_LOGO_URL', default='')
+# Los valores se leen del .env
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', default='tu_email@gmail.com')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD') # Contraseña de Aplicación de Gmail
 
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', default='redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', default='redis://localhost:6379/0')
+# Opcional, si quieres usar django-celery-results:
+# CELERY_RESULT_BACKEND = 'django-db'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'America/Bogota' # Ajusta a tu zona horaria
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
@@ -147,7 +171,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'es-co'
 
 TIME_ZONE = 'UTC'
 
@@ -155,7 +179,13 @@ USE_I18N = True
 
 USE_TZ = True
 
+USE_L10N = True
 
+USE_FORMATTING = True
+
+THOUSAND_SEPARATOR = '.'
+DECIMAL_SEPARATOR = ',' # Aunque no mostrarás decimales, es bueno definirlo.
+NUMBER_GROUPING = 3 # Agrupar cada 3 dígitos.
 
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')

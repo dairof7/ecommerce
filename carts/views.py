@@ -11,6 +11,8 @@ from decimal import Decimal
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 from django_filters.rest_framework import DjangoFilterBackend
 from django.contrib.auth import get_user_model
+from .tasks import send_quote_pdf_email
+from .tasks import send_invoice_pdf_email
 User = get_user_model()
 
 
@@ -301,10 +303,11 @@ class CartViewSet(viewsets.ModelViewSet):
                 quote.total = quote_total
                 quote.save()
                 cart_items.delete()
+                
 
         except Exception as e:
             return Response({"error": f"Ocurrió un error inesperado al crear la cotización: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+        send_quote_pdf_email.delay(quote.id)
         serializer = QuoteSerializer(quote, context={'request': request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -413,7 +416,7 @@ class QuoteViewSet(viewsets.ModelViewSet):
             # Considera loguear el error real
             # logger.error(f"Error finalizando la venta para quote {quote.id}: {e}")
             return Response({"error": "Ocurrió un error inesperado al procesar la venta."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+        send_invoice_pdf_email.delay(quote.id)
         serializer = self.get_serializer(quote)
         return Response({
             "message": f"Venta para la cotización #{quote.pk} finalizada exitosamente. Estado cambiado a 'pagado'.", 
