@@ -1,0 +1,49 @@
+{% extends "carts/pdf/base_pdf_template.html" %}
+{% load date_filters currency_filters %}
+{% block title %}Factura de Venta #{{ document.id }}{% endblock %}
+
+{% block document_header %}
+    <div class="document-title">FACTURA DE VENTA</div>
+    <div><strong>Número:</strong> {{ document.id | stringformat:"03d" }}-{{ document.created_at|date:"Y" }}</div>
+    <div><strong>Fecha de Emisión:</strong> {{ document.updated_at|date:"d M Y" }}</div> {# Usamos updated_at como fecha de pago #}
+{% endblock %}
+
+{% block info_section %}
+    <div class="info-box">
+        <h3>Vendido A:</h3>
+        {# Usar el diccionario customer_info #}
+        <strong>Nombre:</strong> {{ customer_info.name }}<br>
+        <strong>Documento:</strong> {{ customer_info.document }}<br>
+        <strong>Dirección:</strong> {{ customer_info.address }}<br>
+        <strong>Email:</strong> {{ customer_info.email }}
+    </div>
+    <div class="info-box">
+        <h3>Información del Vendedor:</h3>
+        {# Usar vendedor_info o directamente shop_info si es el mismo #}
+        <strong>Nombre:</strong> {{ vendedor_info.nombre }}<br>
+        <strong>Cédula:</strong> {{ vendedor_info.cedula }}<br>
+        <strong>Razón Social:</strong> {{ vendedor_info.nombre_empresa }}<br>
+        <strong>NIT:</strong> {{ vendedor_info.nit }}
+    </div>
+{% endblock %}
+
+{% block totals_extra_rows %}
+    <tr>
+        <td>Envío:</td>
+        <td class="text-right">A convenir</td>
+    </tr>
+    <tr>
+        <td>IVA:</td>
+        <td class="text-right">$0.00</td> {# Ajusta si manejas IVA #}
+    </tr>
+{% endblock %}
+
+{% block footer_notes %}
+    <div class="highlight-box">
+        <strong>Método de pago:</strong> A convenir (Confirmado por WhatsApp)
+    </div>
+    <p><strong>Observaciones:</strong> Operación no sujeta a la facturación del impuesto sobre las ventas - IVA Art. 499 del Estatuto Tributario.</p>
+    <p><strong>Garantía:</strong> 2 meses contra defectos de fábrica en productos seleccionados.</p>
+{% endblock %}
+
+{% block footer_thanks %}¡Gracias por su compra en {{ shop_info.nombre_empresa }}!{% endblock %}

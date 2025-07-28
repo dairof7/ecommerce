@@ -1,0 +1,38 @@
+{% extends "carts/pdf/base_pdf_template.html" %}
+{% load date_filters currency_filters %}
+{% load date_filters %}
+{% block title %}Cotización #{{ document.id }}{% endblock %}
+
+{% block document_header %}
+    <div class="document-title">COTIZACIÓN</div>
+    <div><strong>Número:</strong> {{ document.id | stringformat:"03d" }}</div>
+    <div><strong>Fecha:</strong> {{ document.created_at|date:"d M Y" }}</div>
+    <div><strong>Válida hasta:</strong> {{ document.created_at|add_days:7|date:"d M Y" }}</div>
+{% endblock %}
+
+{% block info_section %}
+    <div class="info-box">
+        <h3>Cliente:</h3>
+        {# Usar el diccionario customer_info #}
+        <strong>Nombre:</strong> {{ customer_info.name }}<br>
+        <strong>Email:</strong> {{ customer_info.email }}<br>
+        <strong>Teléfono:</strong> {{ customer_info.phone }}
+    </div>
+    <div class="info-box">
+        <h3>Información del Vendedor:</h3>
+        {# ... (esto ya usa shop_info, está bien) ... #}
+        <strong>Nombre:</strong> {{ shop_info.nombre }}<br>
+        <strong>Cédula:</strong> {{ shop_info.cedula }}<br>
+        <strong>Razón Social:</strong> {{ shop_info.nombre_empresa }}<br>
+        <strong>NIT:</strong> {{ shop_info.nit }}
+    </div>
+{% endblock %}
+
+{% block footer_notes %}
+    <div class="highlight-box">
+        <strong>Próximos Pasos:</strong> Para confirmar tu pedido y coordinar el pago, contáctanos por WhatsApp al {{ shop_info.telefono }}.
+    </div>
+    <p><strong>Observaciones:</strong> Esta cotización no incluye costos de envío ni comisiones por transacciones bancarias. Los precios y la disponibilidad del stock están sujetos a cambios sin previo aviso hasta la confirmación del pedido.</p>
+{% endblock %}
+
+{% block footer_thanks %}¡Gracias por cotizar en {{ shop_info.nombre_empresa }}!{% endblock %}
