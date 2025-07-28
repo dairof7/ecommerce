@@ -40,6 +40,7 @@ services:
     expose:
       - "8000"
     environment:
+      - SERVICE_TYPE=backend
       - SECRET_KEY=${DJANGO_SECRET_KEY}
       - DEBUG=${DJANGO_DEBUG:-0}
       - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}
@@ -66,7 +67,7 @@ services:
     depends_on:
       - db
       - redis # <-- El backend ahora depende de redis también
-    command: gunicorn my_ecommerce.wsgi:application --bind 0.0.0.0:8000 # <-- Comando para producción
+    command: gunicorn ecommerce.wsgi:application --bind 0.0.0.0:8000 --workers 3 --log-level info --access-logfile - --error-logfile -
     networks:
       - app-network
     restart: unless-stopped
@@ -75,10 +76,10 @@ services:
     build:
       context: ./backend # Usa la misma imagen que el backend
     container_name: ecommerce-celery-worker
-    command: celery -A my_ecommerce worker -l info # Reemplaza 'my_ecommerce' con el nombre de tu proyecto Django
     volumes:
       - media_volume:/app/mediafiles # Si las tareas necesitan acceder a archivos (ej. generar PDFs de facturas)
     environment:
+      - SERVICE_TYPE=celery_worker
       - SECRET_KEY=${DJANGO_SECRET_KEY}
       - DEBUG=${DJANGO_DEBUG:-0}
       - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}
@@ -95,6 +96,7 @@ services:
       - EMAIL_HOST_USER=${EMAIL_HOST_USER}
       - EMAIL_HOST_PASSWORD=${EMAIL_HOST_PASSWORD}
       # etc...
+    command: celery -A ecommerce worker -l info
     depends_on:
       - redis
       - db
