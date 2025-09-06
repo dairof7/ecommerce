@@ -61,7 +61,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         """
         Instancia y retorna la lista de permisos que esta vista requiere.
         """
-        if self.action in ['list', 'retrieve', 'featured_products', 'bestselling_products']:
+        if self.action in ['list', 'retrieve', 'featured_products', 'bestselling_products', 'new_products']:
             # Permitir a cualquiera ver la lista y los detalles de los productos
             permission_classes = [permissions.AllowAny]
         else:
@@ -78,7 +78,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         """
         # Obtener el queryset base del ViewSet para reutilizar filtros y anotaciones si los hubiera
         base_queryset = self.get_queryset()
-        featured_qs = base_queryset.filter(is_featured=True).order_by('-created_at') # Orden aleatorio o por '-created_at', etc.
+        featured_qs = base_queryset.filter(is_featured=True).order_by('?') # Orden aleatorio o por '-created_at', etc.
         limit_str = request.query_params.get('limit', None)
         if limit_str and limit_str.isdigit():
             limit = int(limit_str)
@@ -92,6 +92,26 @@ class ProductViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(featured_qs, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get'], url_path='new-arrivals')
+    def new_products(self, request):
+        """
+        Retorna una lista de productos marcados como destacados (is_featured=True).
+        """
+        # Obtener el queryset base del ViewSet para reutilizar filtros y anotaciones si los hubiera
+        base_queryset = self.get_queryset()
+        featured_qs = base_queryset.filter(stock__gt=0).order_by('-created_at') # Orden aleatorio o por '-created_at', etc.
+        limit_str = request.query_params.get('limit', None)
+        if limit_str and limit_str.isdigit():
+            limit = int(limit_str)
+            featured_qs = featured_qs[:limit] # Aplicar el límite
+
+        page = self.paginate_queryset(featured_qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(featured_qs, many=True)
+        return Response(serializer.data)
 
     @action(detail=False, methods=['get'], url_path='bestsellers')
     def bestselling_products(self, request):
