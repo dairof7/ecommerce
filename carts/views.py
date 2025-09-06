@@ -178,7 +178,6 @@ class CartViewSet(viewsets.ModelViewSet):
         cart = self.get_queryset().first() # Obtenemos el carrito del usuario autenticado
         product_id = request.data.get('product_id')
         quantity = int(request.data.get('quantity', 0)) # Cantidad esperada
-        print('aqui', quantity)
         if quantity <= 0:
             return Response({"error": "Quantity must be positive."}, status=status.HTTP_400_BAD_REQUEST)
         try:

@@ -3,9 +3,11 @@ from .models import Category, Subcategory, Product, ProductImage, Tag
 from .serializers import CategorySerializer, SubcategorySerializer, ProductSerializer, ProductImageSerializer, TagSerializer, RelevantTagSerializer
 from django_filters.rest_framework import DjangoFilterBackend
 from .filters import ProductFilter
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from rest_framework import views, response
 from django.db.models import Case, When, Value, IntegerField
+from carts.models import QuoteItem
+
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
@@ -75,9 +77,8 @@ class ProductViewSet(viewsets.ModelViewSet):
         Retorna una lista de productos marcados como destacados (is_featured=True).
         """
         # Obtener el queryset base del ViewSet para reutilizar filtros y anotaciones si los hubiera
-        base_queryset = self.get_queryset() 
-        featured_qs = base_queryset.filter(is_featured=True).order_by('?') # Orden aleatorio o por '-created_at', etc.
-        
+        base_queryset = self.get_queryset()
+        featured_qs = base_queryset.filter(is_featured=True).order_by('-created_at') # Orden aleatorio o por '-created_at', etc.
         limit_str = request.query_params.get('limit', None)
         if limit_str and limit_str.isdigit():
             limit = int(limit_str)
@@ -95,19 +96,35 @@ class ProductViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='bestsellers')
     def bestselling_products(self, request):
         """
-        Placeholder para los más vendidos. Por ahora, devuelve productos destacados.
+        Retorna los productos más vendidos, basado en la cantidad vendida en cotizaciones 'paid'.
         Permite un parámetro ?limit=N.
         """
-        base_queryset = self.get_queryset()
-        # En una implementación real, aquí filtrarías y ordenarías por conteo de ventas.
-        # Por ahora, usamos is_featured como un proxy o simplemente un orden aleatorio/reciente.
-        bestsellers_qs = base_queryset.filter(is_featured=True).order_by('-created_at') # Ejemplo: destacados más recientes
+        # 1. Obtener los IDs de productos y su cantidad total vendida de cotizaciones pagadas
+        sold_products_data = QuoteItem.objects.filter(
+            quote__status='paid'
+        ).values(
+            'product_id'
+        ).annotate(
+            total_sold=Sum('quantity')
+        ).order_by('-total_sold')
+        # 2. Extraer la lista ordenada de IDs de productos
+        ordered_product_ids = [item['product_id'] for item in sold_products_data]
 
+        # Si no hay productos vendidos, devolver una lista vacía
+        if not ordered_product_ids:
+            return Response([])
+
+        # 3. Obtener los objetos Product, preservando el orden de más vendido a menos vendido
+        preserved_order = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(ordered_product_ids)])
+        bestsellers_qs = Product.objects.filter(pk__in=ordered_product_ids).order_by(preserved_order)
+
+        # Aplicar el límite si se proporciona
         limit_str = request.query_params.get('limit', None)
         if limit_str and limit_str.isdigit():
             limit = int(limit_str)
             bestsellers_qs = bestsellers_qs[:limit]
 
+        # Paginar los resultados
         page = self.paginate_queryset(bestsellers_qs)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
