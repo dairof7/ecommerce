@@ -7,6 +7,7 @@ class StockEntryAdmin(admin.ModelAdmin):
     list_filter = ('product', 'date')
     search_fields = ('product__name',)
     date_hierarchy = 'date' # Navegación jerárquica por fechas
+    autocomplete_fields = ['product'] # Habilita un widget con buscador para el campo 'product'.
     readonly_fields = ('date',)
 
     fieldsets = (
