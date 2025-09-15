@@ -22,9 +22,9 @@
         <h3>Información del Vendedor:</h3>
         {# ... (esto ya usa shop_info, está bien) ... #}
         <strong>Nombre:</strong> {{ shop_info.nombre }}<br>
-        <strong>Cédula:</strong> {{ shop_info.cedula }}<br>
+        {% comment %} <strong>Cédula:</strong> {{ shop_info.cedula }}<br> {% endcomment %}
         <strong>Nombre Comercial:</strong> {{ shop_info.nombre_empresa }}<br>
-        <strong>CC:</strong> {{ shop_info.nit }}
+        <strong>CC/NIT:</strong> {{ shop_info.nit }}
     </div>
 {% endblock %}
 

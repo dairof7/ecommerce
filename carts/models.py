@@ -32,12 +32,12 @@ class Quote(models.Model):
     null=True, 
     blank=True, 
     related_name='quotes',
-    verbose_name="Usuario Registrado (Opcional)"
+    verbose_name="Usuario"
     )
-    customer_name = models.CharField("Nombre del Cliente (invitado)", max_length=150, blank=True)
-    customer_email = models.EmailField("Email del Cliente (invitado)", blank=True)
-    customer_document = models.CharField("Documento del Cliente (invitado)", max_length=30, blank=True)
-    customer_phone = models.CharField("Teléfono del Cliente (invitado)", max_length=30, blank=True)
+    customer_name = models.CharField("Nombre", max_length=150, blank=True)
+    customer_email = models.EmailField("Email", blank=True)
+    customer_document = models.CharField("Documento", max_length=30, blank=True)
+    customer_phone = models.CharField("Teléfono", max_length=30, blank=True)
     cart = models.ForeignKey(Cart, on_delete=models.SET_NULL, null=True, blank=True) # Usar SET_NULL si el carrito se elimina
 
     created_at = models.DateTimeField(auto_now_add=True)
