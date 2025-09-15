@@ -25,7 +25,7 @@ class QuoteItemInline(admin.TabularInline):
         return False
 @admin.register(Quote)
 class QuoteAdmin(admin.ModelAdmin):
-    list_display = ('id','user', 'created_at', 'status', 'total') # Mostrar user en lugar de cart
+    list_display = ('id','user','customer_name', 'customer_email', 'customer_phone', 'status', 'total','created_at') # Mostrar user en lugar de cart
     list_filter = ('status', 'created_at', 'user')
     search_fields = ('user__username',) # Buscar por nombre de usuario
     readonly_fields = ('user', 'cart', 'created_at', 'updated_at', 'total') # Campos de solo lectura

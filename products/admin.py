@@ -63,12 +63,13 @@ class ProductImageInline(admin.TabularInline):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ('id','name', 'category', 'subcategory', 'sale_price', 'stock', 'discount', 'is_featured')
+    list_display = ('id','name', 'category', 'subcategory','pp_display', 'final_price', 'stock', 'discount', 'is_featured')
     list_filter = ('category', 'subcategory', 'tags', 'is_featured')
     search_fields = ('name', 'description')
     list_editable = ('is_featured',)
     inlines = [ProductImageInline]
     filter_horizontal = ('tags',)  # Para una mejor interfaz de selección de tags
+    readonly_fields = ('final_price',)
     fieldsets = (
         (None, {
             'fields': ('name', 'description')
@@ -77,9 +78,17 @@ class ProductAdmin(admin.ModelAdmin):
             'fields': ('category', 'subcategory', 'tags')
         }),
         ('Precios e Inventario', {
-            'fields': ('purchase_price', 'sale_price', 'stock', 'discount')
+            'fields': ('purchase_price', 'sale_price', 'final_price', 'stock', 'discount')
         }),
     )
+
+    def pp_display(self, obj):
+        return obj.purchase_price
+    pp_display.short_description = 'PP'
+
+    def final_price(self, obj):
+        return obj.final_sale_price
+    final_price.short_description = 'PF (-disc)'
 
 @admin.register(ProductImage)
 class ProductImageAdmin(admin.ModelAdmin):

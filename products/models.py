@@ -49,7 +49,7 @@ class Product(models.Model):
     tags = models.ManyToManyField(Tag, blank=True)
     purchase_price = models.DecimalField(max_digits=10, decimal_places=2, null=True)
     stock = models.PositiveIntegerField(default=0)
-    is_featured = models.BooleanField("Producto Destacado", default=False, db_index=True)
+    is_featured = models.BooleanField("Destacado", default=False, db_index=True)
     sale_price = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
     # Este 'discount' es el descuento base/individual del producto
     discount = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'))
