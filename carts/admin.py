@@ -1,6 +1,12 @@
 # carts/admin.py
 from django.contrib import admin
 from .models import Cart, CartItem, Quote, QuoteItem # Importa QuoteItem
+from django.urls import path
+from django.shortcuts import render
+from django.utils import timezone
+from datetime import timedelta
+from django.db.models.functions import TruncMonth
+from django.db.models import Sum, F, DecimalField
 
 class CartItemInline(admin.TabularInline):
     model = CartItem
@@ -37,6 +43,113 @@ class QuoteAdmin(admin.ModelAdmin):
         }),
         # Los items se mostrarán a través del inline
     )
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('sales-dashboard/', self.admin_site.admin_view(self.sales_dashboard_view), name='carts_quote_sales_dashboard')
+        ]
+        return custom_urls + urls
+
+    def sales_dashboard_view(self, request):
+        current_time = timezone.now()
+        
+        # 1. Top 10 Best-Selling Products (Last 4 Months)
+        four_months_ago_total = current_time - timedelta(days=120)
+        top_selling_products = QuoteItem.objects.filter(
+            quote__status__in=['paid', 'shipped'],
+            quote__created_at__gte=four_months_ago_total,
+            product__purchase_price__isnull=False # Solo incluir productos con precio de compra
+        ).values(
+            'product__name'
+        ).annotate(
+            total_sold=Sum('quantity'),
+            total_profit=Sum(
+                (F('price_at_quote') - F('product__purchase_price')) * F('quantity'),
+                output_field=DecimalField()
+            )
+        ).order_by('-total_sold')[:10]
+
+        # 2. Total Sales & Category Sales (Last 4 Months)
+        # --- Generate labels and date range for the last 4 months ---
+        months_to_show = 4
+        today = current_time.date()
+        month_labels = []
+        first_day_of_current_month = today.replace(day=1)
+
+        start_date_year = first_day_of_current_month.year
+        start_date_month = first_day_of_current_month.month - (months_to_show - 1)
+        while start_date_month <= 0:
+            start_date_month += 12
+            start_date_year -= 1
+        four_months_ago = first_day_of_current_month.replace(year=start_date_year, month=start_date_month)
+
+        temp_date = four_months_ago
+        for _ in range(months_to_show):
+            month_labels.append(temp_date.strftime("%b %Y"))
+            next_month = temp_date.month + 1
+            next_year = temp_date.year
+            if next_month > 12:
+                next_month = 1
+                next_year += 1
+            temp_date = temp_date.replace(year=next_year, month=next_month)
+
+        # --- Prepare data for "Total Sales" chart ---
+        sales_data_dict = {label: 0 for label in month_labels}
+        sales_last_4_months = Quote.objects.filter(
+            status__in=['paid', 'shipped'],
+            created_at__gte=four_months_ago
+        ).annotate(month_year=TruncMonth('created_at')).values('month_year').annotate(total_sales=Sum('total'))
+
+        for sale in sales_last_4_months:
+            label = sale['month_year'].strftime("%b %Y")
+            if label in sales_data_dict:
+                sales_data_dict[label] = float(sale['total_sales'])
+        sales_chart_data = {"labels": list(sales_data_dict.keys()), "data": list(sales_data_dict.values())}
+
+        # --- Prepare data for "Sales by Category" chart ---
+        sales_by_cat_month = QuoteItem.objects.filter(
+            quote__status__in=['paid', 'shipped'],
+            quote__created_at__gte=four_months_ago
+        ).annotate(
+            month_year=TruncMonth('quote__created_at')
+        ).values(
+            'month_year', 'product__category__name'
+        ).annotate(total_sales=Sum(F('quantity') * F('price_at_quote'))).order_by('month_year')
+
+        all_categories = sorted(list(set(d['product__category__name'] for d in sales_by_cat_month if d.get('product__category__name'))))
+        category_sales_data = {cat_name: {m_label: 0 for m_label in month_labels} for cat_name in all_categories}
+
+        for item in sales_by_cat_month:
+            category_name = item.get('product__category__name')
+            if not category_name: continue
+            month_label = item['month_year'].strftime("%b %Y")
+            if month_label in month_labels and category_name in category_sales_data:
+                category_sales_data[category_name][month_label] = float(item['total_sales'])
+
+        category_colors = ['rgba(255, 99, 132, 0.7)', 'rgba(54, 162, 235, 0.7)', 'rgba(255, 206, 86, 0.7)', 'rgba(75, 192, 192, 0.7)', 'rgba(153, 102, 255, 0.7)', 'rgba(255, 159, 64, 0.7)', 'rgba(199, 199, 199, 0.7)', 'rgba(83, 102, 255, 0.7)', 'rgba(255, 99, 255, 0.7)', 'rgba(100, 255, 100, 0.7)']
+        category_chart_datasets = []
+        for i, cat_name in enumerate(all_categories):
+            dataset = {
+                'label': cat_name,
+                'data': [category_sales_data[cat_name][m_label] for m_label in month_labels],
+                'backgroundColor': category_colors[i % len(category_colors)],
+            }
+            category_chart_datasets.append(dataset)
+
+        category_sales_chart_data = {
+            'labels': month_labels,
+            'datasets': category_chart_datasets
+        }
+
+        context = dict(
+           self.admin_site.each_context(request),
+           title="Dashboard de Ventas",
+           top_selling_products=list(top_selling_products),
+           sales_chart_data=sales_chart_data,
+           category_sales_chart_data=category_sales_chart_data,
+        )
+        return render(request, "admin/sales_dashboard.html", context)
 
 @admin.register(CartItem)
 class CartItemAdmin(admin.ModelAdmin):
