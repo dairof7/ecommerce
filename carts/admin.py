@@ -54,21 +54,26 @@ class QuoteAdmin(admin.ModelAdmin):
     def sales_dashboard_view(self, request):
         current_time = timezone.now()
         
-        # 1. Top 10 Best-Selling Products (Last 4 Months)
+        # Definir el número de items a mostrar en los rankings "Top"
+        TOP_N = 10
+        
+        # 1. Top N Best-Selling & Most Profitable Products (Last 4 Months)
         four_months_ago_total = current_time - timedelta(days=120)
-        top_selling_products = QuoteItem.objects.filter(
+
+        base_query = QuoteItem.objects.filter(
             quote__status__in=['paid', 'shipped'],
             quote__created_at__gte=four_months_ago_total,
-            product__purchase_price__isnull=False # Solo incluir productos con precio de compra
-        ).values(
-            'product__name'
-        ).annotate(
+            product__purchase_price__isnull=False
+        ).values('product__name').annotate(
             total_sold=Sum('quantity'),
             total_profit=Sum(
                 (F('price_at_quote') - F('product__purchase_price')) * F('quantity'),
                 output_field=DecimalField()
             )
-        ).order_by('-total_sold')[:10]
+        )
+
+        top_selling_products = base_query.order_by('-total_sold')[:TOP_N]
+        top_profit_products = base_query.order_by('-total_profit')[:TOP_N]
 
         # 2. Total Sales & Category Sales (Last 4 Months)
         # --- Generate labels and date range for the last 4 months ---
@@ -127,7 +132,19 @@ class QuoteAdmin(admin.ModelAdmin):
             if month_label in month_labels and category_name in category_sales_data:
                 category_sales_data[category_name][month_label] = float(item['total_sales'])
 
-        category_colors = ['rgba(255, 99, 132, 0.7)', 'rgba(54, 162, 235, 0.7)', 'rgba(255, 206, 86, 0.7)', 'rgba(75, 192, 192, 0.7)', 'rgba(153, 102, 255, 0.7)', 'rgba(255, 159, 64, 0.7)', 'rgba(199, 199, 199, 0.7)', 'rgba(83, 102, 255, 0.7)', 'rgba(255, 99, 255, 0.7)', 'rgba(100, 255, 100, 0.7)']
+        # Paleta de colores más oscura
+        category_colors = [
+            'rgba(0, 128, 128, 0.7)',   # Dark Teal
+            'rgba(70, 130, 180, 0.7)',  # Steel Blue
+            'rgba(47, 79, 79, 0.7)',    # Dark Slate Gray
+            'rgba(75, 0, 130, 0.7)',    # Indigo
+            'rgba(128, 0, 0, 0.7)',     # Maroon
+            'rgba(85, 107, 47, 0.7)',   # Dark Olive Green
+            'rgba(139, 69, 19, 0.7)',   # Saddle Brown
+            'rgba(139, 0, 139, 0.7)',   # Dark Magenta
+            'rgba(25, 25, 112, 0.7)',   # Midnight Blue
+            'rgba(72, 61, 139, 0.7)'    # Dark Slate Blue
+        ]
         category_chart_datasets = []
         for i, cat_name in enumerate(all_categories):
             dataset = {
@@ -146,6 +163,7 @@ class QuoteAdmin(admin.ModelAdmin):
            self.admin_site.each_context(request),
            title="Dashboard de Ventas",
            top_selling_products=list(top_selling_products),
+           top_profit_products=list(top_profit_products),
            sales_chart_data=sales_chart_data,
            category_sales_chart_data=category_sales_chart_data,
         )

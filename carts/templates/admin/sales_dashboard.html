@@ -76,6 +76,34 @@
     {% endif %}
   </div>
 
+  <div class="table-container">
+    <h2>Más Rentables (Últimos 4 meses)</h2>
+    {% if top_profit_products %}
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 20px;">#</th>
+            <th>Producto</th>
+            <th style="width: 70px; text-align: center;">Cantidad</th>
+            <th style="width: 120px; text-align: right;">Ganancia Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for product in top_profit_products %}
+            <tr>
+              <td>{{ forloop.counter }}.</td>
+              <td>{{ product.product__name }}</td>
+              <td style="text-align: center;">{{ product.total_sold }}</td>
+              <td style="text-align: right;">${{ product.total_profit|floatformat:0 }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>No hay datos de ventas en este período.</p>
+    {% endif %}
+  </div>
+
   <div class="chart-container">
     <canvas id="totalSalesChart"></canvas>
   </div>
