@@ -1,0 +1,190 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <style>
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+      gap: 2rem;
+      margin-bottom: 2rem;
+    }
+    .chart-container, .table-container {
+      padding: 1.5rem;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    .chart-container {
+      position: relative;
+      height: 400px;
+    }
+    .table-container h2 {
+      margin-top: 0;
+      font-size: 1.2rem;
+      color: #333;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .table-container table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .table-container th, .table-container td {
+      text-align: left;
+      padding: 8px 4px;
+      border-bottom: 1px solid #eee;
+    }
+    .table-container th {
+      font-weight: 600;
+    }
+    .table-container tr:last-child td {
+      border-bottom: none;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-grid">
+  <div class="table-container">
+    <h2>Más Vendidos (Últimos 4 meses)</h2>
+    {% if top_selling_products %}
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 20px;">#</th>
+            <th>Producto</th>
+            <th style="width: 70px; text-align: center;">Cantidad</th>
+            <th style="width: 120px; text-align: right;">Ganancia Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for product in top_selling_products %}
+            <tr>
+              <td>{{ forloop.counter }}.</td>
+              <td>{{ product.product__name }}</td>
+              <td style="text-align: center;">{{ product.total_sold }}</td>
+              <td style="text-align: right;">${{ product.total_profit|floatformat:0 }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>No hay datos de ventas en este período.</p>
+    {% endif %}
+  </div>
+
+  <div class="chart-container">
+    <canvas id="totalSalesChart"></canvas>
+  </div>
+</div>
+
+<div class="dashboard-grid">
+  <div class="chart-container" style="grid-column: 1 / -1;">
+    <canvas id="categorySalesChart"></canvas>
+  </div>
+</div>
+
+{{ sales_chart_data|json_script:"sales-chart-data" }}
+{{ category_sales_chart_data|json_script:"category-sales-chart-data" }}
+{% endblock %}
+
+{% block extrahead %}
+  {{ block.super }}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block footer %}
+  {{ block.super }}
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const formatCurrency = (value) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(value);
+
+      // 1. Total Sales Chart
+      const salesData = JSON.parse(document.getElementById('sales-chart-data').textContent);
+      if (salesData && salesData.labels.length > 0) {
+        const totalSalesCtx = document.getElementById('totalSalesChart').getContext('2d');
+        new Chart(totalSalesCtx, {
+          type: 'line',
+          data: {
+            labels: salesData.labels,
+            datasets: [{
+              label: 'Ventas Totales',
+              data: salesData.data,
+              backgroundColor: 'rgba(54, 162, 235, 0.2)',
+              borderColor: 'rgba(54, 162, 235, 1)',
+              borderWidth: 2,
+              fill: true,
+              tension: 0.1
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              title: { display: true, text: 'Ventas Totales (Últimos 4 meses)', font: { size: 16 } },
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    return ' ' + formatCurrency(context.parsed.y);
+                  }
+                }
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                ticks: {
+                  callback: function(value) { return formatCurrency(value); }
+                }
+              }
+            }
+          }
+        });
+      }
+
+      // 2. Category Sales Chart (Stacked Bar)
+      const categorySalesData = JSON.parse(document.getElementById('category-sales-chart-data').textContent);
+      if (categorySalesData && categorySalesData.labels.length > 0) {
+        const categorySalesCtx = document.getElementById('categorySalesChart').getContext('2d');
+        new Chart(categorySalesCtx, {
+          type: 'bar',
+          data: categorySalesData,
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              title: { display: true, text: 'Ventas Mensuales por Categoría (Últimos 4 meses)', font: { size: 16 } },
+              legend: { position: 'top' },
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    let label = context.dataset.label || '';
+                    if (label) {
+                      label += ': ';
+                    }
+                    label += formatCurrency(context.parsed.y);
+                    return label;
+                  }
+                }
+              }
+            },
+            scales: {
+              x: { stacked: true },
+              y: {
+                stacked: true,
+                beginAtZero: true,
+                ticks: {
+                  callback: function(value) { return formatCurrency(value); }
+                }
+              }
+            }
+          }
+        });
+      }
+    });
+  </script>
+{% endblock %}
