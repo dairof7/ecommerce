@@ -1,6 +1,6 @@
 # carts/admin.py
 from django.contrib import admin
-from .models import Cart, CartItem, Quote, QuoteItem # Importa QuoteItem
+from .models import Cart, CartItem, Quote, QuoteItem, Coupon
 from django.urls import path
 from django.shortcuts import render
 from django.utils import timezone
@@ -16,7 +16,7 @@ class CartItemInline(admin.TabularInline):
 
 @admin.register(Cart)
 class CartAdmin(admin.ModelAdmin):
-    list_display = ('id','user', 'created_at', 'updated_at')
+    list_display = ('id','user', 'coupon', 'created_at', 'updated_at')
     list_filter = ('user',)
     search_fields = ('user__username',)
     inlines = [CartItemInline]
@@ -31,15 +31,15 @@ class QuoteItemInline(admin.TabularInline):
         return False
 @admin.register(Quote)
 class QuoteAdmin(admin.ModelAdmin):
-    list_display = ('id','user','customer_name', 'customer_email', 'customer_phone', 'status', 'total','created_at') # Mostrar user en lugar de cart
+    list_display = ('id', 'user', 'customer_name', 'customer_email', 'status', 'total', 'coupon', 'coupon_discount', 'created_at')
     list_filter = ('status', 'created_at', 'user')
-    search_fields = ('user__username',) # Buscar por nombre de usuario
-    readonly_fields = ('user', 'cart', 'created_at', 'updated_at', 'total') # Campos de solo lectura
+    search_fields = ('user__username', 'customer_name', 'customer_email', 'coupon__code')
+    readonly_fields = ('user', 'cart', 'created_at', 'updated_at', 'total', 'coupon_discount')
     inlines = [QuoteItemInline] # Mostrar los items de la cotización
 
     fieldsets = (
         (None, {
-            'fields': ('user','customer_name','customer_email','customer_document','customer_phone', 'cart', 'created_at', 'updated_at', 'status', 'total')
+            'fields': ('user', 'customer_name', 'customer_email', 'customer_document', 'customer_phone', 'cart', 'created_at', 'updated_at', 'status', 'coupon', 'coupon_discount', 'total')
         }),
         # Los items se mostrarán a través del inline
     )
@@ -169,6 +169,27 @@ class QuoteAdmin(admin.ModelAdmin):
         )
         return render(request, "admin/sales_dashboard.html", context)
 
+
+@admin.register(Coupon)
+class CouponAdmin(admin.ModelAdmin):
+    list_display = ('code', 'discount_type', 'discount_value', 'min_purchase_amount', 'uses_limit', 'uses_count','is_active','valid_from', 'valid_to')
+    list_filter = ('is_active', 'discount_type', 'valid_to')
+    search_fields = ('code',)
+    readonly_fields = ('uses_count',)
+    fieldsets = (
+        (None, {
+            'fields': ('code', 'is_active')
+        }),
+        ('Validez', {
+            'fields': ('valid_from', 'valid_to')
+        }),
+        ('Reglas de Descuento', {
+            'fields': ('discount_type', 'discount_value', 'max_discount_amount', 'min_purchase_amount')
+        }),
+        ('Límites de Uso', {
+            'fields': ('uses_limit', 'uses_count')
+        }),
+    )
 @admin.register(CartItem)
 class CartItemAdmin(admin.ModelAdmin):
     list_display = ('id','cart', 'product', 'quantity', 'subtotal') # Mostrar subtotal
