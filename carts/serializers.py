@@ -1,8 +1,17 @@
 # carts/serializers.py
 from rest_framework import serializers
-from .models import Cart, CartItem, Quote, QuoteItem
+from .models import Cart, CartItem, Quote, QuoteItem, Coupon
 from products.models import Product # Asegúrate de importar Product
 from accounts.serializers import UserProfileSerializer
+from decimal import Decimal
+
+
+class CouponSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Coupon
+        fields = ['code', 'discount_type', 'discount_value', 'max_discount_amount', 'min_purchase_amount']
+
+
 class CartItemSerializer(serializers.ModelSerializer):
     product_name = serializers.ReadOnlyField(source='product.name')
     product_id = serializers.ReadOnlyField(source='product.id')
@@ -34,11 +43,15 @@ class CartItemSerializer(serializers.ModelSerializer):
 class CartSerializer(serializers.ModelSerializer):
     # items = CartItemSerializer(many=True, read_only=True)
     items = serializers.SerializerMethodField()
+    coupon = CouponSerializer(read_only=True)
+    subtotal = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    coupon_discount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
 
     class Meta:
         model = Cart
-        fields = ['id', 'user', 'items', 'created_at', 'updated_at']
-        read_only_fields = ('user', 'itemCount', 'totalAmount', 'created_at', 'updated_at')
+        fields = ['id', 'user', 'items', 'created_at', 'updated_at', 'subtotal', 'coupon', 'coupon_discount', 'total']
+        read_only_fields = ('user', 'created_at', 'updated_at', 'subtotal', 'coupon', 'coupon_discount', 'total')
 
     def get_items(self, obj):
         ordered_items = obj.items.all().order_by('product__name') # O 'added_at'
@@ -60,7 +73,9 @@ class QuoteSerializer(serializers.ModelSerializer):
     # Incluir los items de la cotización anidados
     items = QuoteItemSerializer(many=True, read_only=True)
     user_email = serializers.ReadOnlyField(source='user.email')
-    user_detail = UserProfileSerializer(source='user.profile', read_only=True) 
+    user_detail = UserProfileSerializer(source='user.profile', read_only=True)
+    coupon = CouponSerializer(read_only=True)
+    subtotal = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
 
     # class Meta:
     #     model = Quote
@@ -81,11 +96,14 @@ class QuoteSerializer(serializers.ModelSerializer):
             'cart', 
             'created_at', 
             'updated_at', 
-            'status', 
+            'status',
+            'subtotal',
+            'coupon',
+            'coupon_discount',
             'total', 
             'items',
             'user_detail'
         ]
         # Hacemos 'user' de solo lectura porque se establecerá automáticamente
         # si la solicitud la hace un usuario autenticado, no se debe poder asignar manualmente.
-        read_only_fields = ['user', 'cart', 'created_at', 'updated_at', 'total', 'items', 'user_email']
+        read_only_fields = ['user', 'cart', 'created_at', 'updated_at', 'total', 'items', 'user_email', 'subtotal', 'coupon', 'coupon_discount']

@@ -2,12 +2,14 @@
 from rest_framework import viewsets, permissions, status, filters
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from .models import Cart, CartItem, Quote, QuoteItem
+from .models import Cart, CartItem, Quote, QuoteItem, Coupon
 from products.models import Product
-from .serializers import CartSerializer, CartItemSerializer, QuoteSerializer, QuoteItemSerializer # Importa QuoteItemSerializer
+from .serializers import CartSerializer, CartItemSerializer, QuoteSerializer
 from rest_framework.permissions import IsAuthenticated
-from django.db import transaction # Importar para transacciones atómicas
+from django.db import transaction
+from django.db.models import F
 from decimal import Decimal
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 from django_filters.rest_framework import DjangoFilterBackend
 from django.contrib.auth import get_user_model
@@ -126,13 +128,16 @@ class CartViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='add_items') # Cambiado a 'item' y espera product_id y quantity total
     def add_items_by_quantity(self, request):
+        """
+        Establece una cantidad específica para un producto en el carrito.
+        Si la cantidad es 0 o menos, el producto se elimina del carrito.
+        """
         cart = self.get_queryset().first()
         if not cart:
             return Response({"error": "Carrito no encontrado."}, status=status.HTTP_404_NOT_FOUND)
 
         try:
             product_id = int(request.data.get('product_id'))
-            # Esta 'quantity' es la NUEVA CANTIDAD TOTAL deseada para el item
             quantity = int(request.data.get('quantity')) 
         except (ValueError, TypeError, KeyError):
             return Response({"error": "product_id y quantity son requeridos y deben ser enteros."}, status=status.HTTP_400_BAD_REQUEST)
@@ -142,65 +147,66 @@ class CartViewSet(viewsets.ModelViewSet):
         except Product.DoesNotExist:
             return Response({"error": "Producto no encontrado."}, status=status.HTTP_404_NOT_FOUND)
 
-        if quantity <= 0: # Si la nueva cantidad es 0 o menos, eliminar el item
+        if quantity <= 0:
             CartItem.objects.filter(cart=cart, product=product).delete()
-            action_taken = "eliminado"
         else:
-            # Validar stock para la nueva cantidad total
-            current_item = CartItem.objects.filter(cart=cart, product=product).first()
-            current_qty_in_cart = current_item.quantity if current_item else 0
-            if product.stock < quantity + current_qty_in_cart:
+            if product.stock < quantity:
                 return Response(
-                    {"error": f"Stock insuficiente para '{product.name}'. Disponible: {product.stock}. Solicitado total: {quantity}. Ya en carrito: {current_qty_in_cart}."},
+                    {"error": f"Stock insuficiente para '{product.name}'. Disponible: {product.stock}. Solicitado: {quantity}."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Actualiza o crea el item con la cantidad especificada
-            cart_item, created = CartItem.objects.update_or_create(
+            CartItem.objects.update_or_create(
                 cart=cart,
                 product=product,
-                defaults={'quantity': quantity + current_qty_in_cart} # ESTABLECE la cantidad
+                defaults={'quantity': quantity}
             )
-            action_taken = "actualizado" if not created else "añadido"
 
-        # Devolver el carrito completo actualizado
-        cart.refresh_from_db() # Para asegurar que cualquier cálculo en el modelo Cart se actualice
-        serializer = self.get_serializer(cart) # Usa el serializer del ViewSet (CartSerializer)
+        cart.refresh_from_db()
+        serializer = self.get_serializer(cart)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
     @action(detail=False, methods=['post']) # Cambiamos a detail=False para operar en el carrito del usuario directamente
     def add_item(self, request):
         """
-        Agrega o actualiza un producto en el carrito del usuario autenticado.
-        Requiere 'product_id' y 'quantity' en el cuerpo de la solicitud.
+        Establece una cantidad específica para un producto en el carrito.
+        Si la cantidad es 0 o menos, el producto se elimina del carrito.
+        Este endpoint es usado por CartPage y POSPage para actualizar cantidades.
         """
-        cart = self.get_queryset().first() # Obtenemos el carrito del usuario autenticado
-        product_id = request.data.get('product_id')
-        quantity = int(request.data.get('quantity', 0)) # Cantidad esperada
-        if quantity <= 0:
-            return Response({"error": "Quantity must be positive."}, status=status.HTTP_400_BAD_REQUEST)
+        cart = self.get_queryset().first()
+        if not cart:
+            return Response({"error": "Carrito no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            product_id = int(request.data.get('product_id'))
+            quantity = int(request.data.get('quantity'))
+        except (ValueError, TypeError, KeyError):
+            return Response({"error": "product_id y quantity son requeridos y deben ser enteros."}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             product = Product.objects.get(pk=product_id)
         except Product.DoesNotExist:
             return Response({"error": "Product not found"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if quantity <= 0:
+            CartItem.objects.filter(cart=cart, product=product).delete()
+        else:
+            if product.stock < quantity:
+                return Response(
+                    {"error": f"Stock insuficiente para '{product.name}'. Disponible: {product.stock}. Solicitado: {quantity}."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            CartItem.objects.update_or_create(
+                cart=cart,
+                product=product,
+                defaults={'quantity': quantity}
+            )
 
-        # Validar stock antes de añadir/actualizar en el carrito
-        # Si el item ya existe, sumamos la cantidad existente a la nueva cantidad para la validación
-        existing_item = cart.items.filter(id=product_id).first()
-        total_quantity_requested = quantity + (existing_item.quantity if existing_item else 0)
-        if product.stock < total_quantity_requested:
-            return Response({"error": f"Insufficient stock.  Only {product.stock} available for {product.name} (already in cart: {existing_item.quantity if existing_item else 0})."}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Usamos get_or_create para manejar si el item ya está en el carrito
-        cart_item, created = CartItem.objects.get_or_create(cart=cart, product=product, defaults={'quantity': quantity})
-        if not created:
-            cart_item.quantity = total_quantity_requested # Actualiza la cantidad total
-            cart_item.save()
-
-        cart.refresh_from_db() # Para asegurar que cualquier cálculo en el modelo Cart se actualice
+        cart.refresh_from_db()
         serializer = self.get_serializer(cart)
-        return Response(serializer.data, status=status.HTTP_200_OK) # Usamos 200 OK para actualizar, 201 Created para crear
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['delete'], url_path=r'remove_item/(?P<item_id>\d+)')
     def remove_item(self, request, item_id=None):
@@ -223,6 +229,48 @@ class CartViewSet(viewsets.ModelViewSet):
         cart.refresh_from_db() # Para asegurar que cualquier cálculo en el modelo Cart se actualice
         serializer = self.get_serializer(cart)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='apply-coupon')
+    def apply_coupon(self, request):
+        cart = self.get_queryset().first()
+        code = request.data.get('code')
+
+        if not code:
+            return Response({"error": "Se requiere un código de cupón."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Usamos select_for_update para bloquear el cupón y evitar race conditions en el conteo de usos
+            coupon = Coupon.objects.get(code__iexact=code)
+        except Coupon.DoesNotExist:
+            return Response({"error": "El cupón no es válido."}, status=status.HTTP_404_NOT_FOUND)
+
+        now = timezone.now()
+        if not coupon.is_active or not (coupon.valid_from <= now <= coupon.valid_to):
+            return Response({"error": "El cupón no es válido o ha expirado."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if coupon.uses_count >= coupon.uses_limit:
+            return Response({"error": "Este cupón ha alcanzado su límite de usos."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # El subtotal se calcula en la propiedad del modelo Cart
+        if cart.subtotal < coupon.min_purchase_amount:
+            return Response({"error": f"Esta compra no cumple el monto mínimo de {coupon.min_purchase_amount:,.0f} COP para usar este cupón."}, status=status.HTTP_400_BAD_REQUEST)
+
+        cart.coupon = coupon
+        cart.save()
+
+        cart.refresh_from_db()
+        serializer = self.get_serializer(cart)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'], url_path='remove-coupon')
+    def remove_coupon(self, request):
+        cart = self.get_queryset().first()
+        if cart.coupon:
+            cart.coupon = None
+            cart.save()
+        
+        serializer = self.get_serializer(cart)
+        return Response(serializer.data)
 
     @action(detail=False, methods=['post'])
     def create_quote(self, request):
@@ -276,32 +324,46 @@ class CartViewSet(viewsets.ModelViewSet):
 
         try:
             with transaction.atomic():
+                # --- Calcular totales y descuentos ---
+                cart_subtotal = cart.subtotal
+                coupon_to_apply = cart.coupon
+                coupon_discount_amount = Decimal('0.00')
+
+                if coupon_to_apply:
+                    # Re-validar el cupón en el momento de la creación de la cotización
+                    coupon_to_apply = Coupon.objects.select_for_update().get(pk=coupon_to_apply.pk)
+                    if not coupon_to_apply.is_valid() or cart_subtotal < coupon_to_apply.min_purchase_amount:
+                        cart.coupon = None
+                        cart.save()
+                        return Response({"error": "El cupón aplicado ya no es válido o no cumple las condiciones. Se ha quitado del carrito."}, status=status.HTTP_400_BAD_REQUEST)
+                    
+                    coupon_discount_amount = coupon_to_apply.calculate_discount(cart_subtotal)
+
+                final_total = cart_subtotal - coupon_discount_amount
+
                 quote = Quote.objects.create(
                     user=quote_user, # Asignar el usuario encontrado/logueado, o None
                     cart=cart,
                     status='pending',
-                    total=Decimal('0.00'),
+                    coupon=coupon_to_apply,
+                    coupon_discount=coupon_discount_amount,
+                    total=final_total,
                     customer_name=customer_name,
                     customer_email=customer_email,
                     customer_document=customer_document,
                     customer_phone=customer_phone,
                 )
                 
-                # ... (código para crear QuoteItems y calcular el total) ...
-                # Esta parte no necesita cambios
-                quote_total = Decimal('0.00')
-                cart_items = cart.items.all()
                 quote_items_to_create = []
-                for item in cart_items:
+                for item in cart.items.all():
                     price_at_quote = item.product.final_sale_price
-                    quote_item_instance = QuoteItem(quote=quote, product=item.product, quantity=item.quantity, price_at_quote=price_at_quote)
-                    quote_items_to_create.append(quote_item_instance)
-                    quote_total += quote_item_instance.subtotal
+                    quote_items_to_create.append(QuoteItem(quote=quote, product=item.product, quantity=item.quantity, price_at_quote=price_at_quote))
                 
                 QuoteItem.objects.bulk_create(quote_items_to_create)
-                quote.total = quote_total
-                quote.save()
-                cart_items.delete()
+                
+                cart.items.all().delete()
+                cart.coupon = None
+                cart.save()
                 
 
         except Exception as e:
@@ -403,11 +465,13 @@ class QuoteViewSet(viewsets.ModelViewSet):
                     product.stock -= item.quantity
                     product.save()
                 
+                # Incrementar el uso del cupón si la cotización tiene uno.
+                if quote.coupon:
+                    Coupon.objects.filter(pk=quote.coupon.pk).update(uses_count=F('uses_count') + 1)
+
                 # Cambiar el estado de la cotización
                 quote.status = 'paid'
                 quote.save()
-                
-                # Aquí podrías añadir lógica adicional como enviar un correo de confirmación de pago.
 
         except ValueError as e: # Captura el error de stock que lanzamos
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -452,6 +516,10 @@ class QuoteViewSet(viewsets.ModelViewSet):
                     product = Product.objects.select_for_update().get(pk=item.product.pk)
                     product.stock += item.quantity
                     product.save()
+                
+                # Restaurar el uso del cupón si se aplicó uno en esta cotización.
+                if quote.coupon:
+                    Coupon.objects.filter(pk=quote.coupon.pk, uses_count__gt=0).update(uses_count=F('uses_count') - 1)
 
         serializer = QuoteSerializer(quote)
         return Response({
