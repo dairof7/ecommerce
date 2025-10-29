@@ -9,7 +9,7 @@ from django.db.models import Case, When, Value, IntegerField
 from carts.models import QuoteItem
 
 class CategoryViewSet(viewsets.ModelViewSet):
-    queryset = Category.objects.all()
+    queryset = Category.objects.filter(is_active=True)
     serializer_class = CategorySerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter, DjangoFilterBackend]
     
@@ -18,7 +18,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
 
 class SubcategoryViewSet(viewsets.ModelViewSet):
-    queryset = Subcategory.objects.all().order_by('name')
+    queryset = Subcategory.objects.filter(is_active=True).order_by('name')
     serializer_class = SubcategorySerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter, DjangoFilterBackend]
     
@@ -39,14 +39,6 @@ class TagViewSet(viewsets.ModelViewSet):
 #     ordering_fields = ['name', 'sale_price']
 
 class ProductViewSet(viewsets.ModelViewSet):
-    # queryset = Product.objects.all().order_by('-is_featured', '-discount', '-stock','-created_at') # Ordenar por destacados primero y luego por fecha de creación
-    queryset = Product.objects.annotate(
-    stock_empty=Case(
-        When(stock=0, then=Value(1)),
-        default=Value(0),
-        output_field=IntegerField(),
-    )
-).order_by('stock_empty', '-is_featured', '-discount', '-created_at')
     serializer_class = ProductSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter, DjangoFilterBackend]
     search_fields = ['name', 'description', 'category__name', 'subcategory__name', 'tags__name']
@@ -54,6 +46,32 @@ class ProductViewSet(viewsets.ModelViewSet):
     # con este busco por el nombre de la categoría y subcategoría
     filterset_class = ProductFilter
     # filterset_fields = ['category', 'subcategory', 'tags']
+
+    def get_queryset(self):
+        """
+        - Usuarios normales: Ven solo productos activos que NO son servicios.
+        - Administradores (staff): Ven TODOS los productos, para poder usarlos en el POS.
+        """
+        base_queryset = Product.objects.all()
+
+        # Si el usuario no es administrador, aplicamos filtros de visibilidad estrictos.
+        if not self.request.user.is_staff:
+            base_queryset = base_queryset.filter(
+                is_active=True, 
+                is_service=False, # Oculta los servicios a los clientes
+                category__is_active=True, 
+                subcategory__is_active=True
+            )
+
+        # Anotación y ordenamiento para todos
+        queryset = base_queryset.annotate(
+            stock_empty=Case(
+                When(stock=0, then=Value(1)),
+                default=Value(0),
+                output_field=IntegerField(),
+            )
+        ).order_by('stock_empty', '-is_featured', '-discount', '-created_at')
+        return queryset
 
     # permission_classes = [permissions.IsAdminUser] # Descomentar si quieres que solo los administradores puedan acceder a esta vista
         # --- AÑADIR CLASES DE PERMISOS AQUÍ ---

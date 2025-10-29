@@ -12,6 +12,7 @@ class Category(models.Model):
         default=0, 
         help_text="Menor número aparece primero. 0 es la prioridad más alta."
     )
+    is_active = models.BooleanField("Activo", default=True, db_index=True)
     class Meta:
         verbose_name = "Categoría"
         verbose_name_plural = "Categorías"
@@ -24,6 +25,7 @@ class Subcategory(models.Model):
     name = models.CharField(max_length=100)
     image = models.ImageField("Imagen de Subcategoría", upload_to='subcategories/', blank=True, null=True)
     description = models.TextField("Descripción (opcional)", blank=True)
+    is_active = models.BooleanField("Activo", default=True, db_index=True)
 
     class Meta:
         verbose_name = "Subcategoría"
@@ -50,6 +52,8 @@ class Product(models.Model):
     purchase_price = models.DecimalField(max_digits=10, decimal_places=2, null=True)
     stock = models.PositiveIntegerField(default=0)
     is_featured = models.BooleanField("Destacado", default=False, db_index=True)
+    is_active = models.BooleanField("Activo", default=True, db_index=True)
+    is_service = models.BooleanField("Es un Servicio", default=False, help_text="Marcar si esto es un servicio y no un producto físico. No será visible para clientes en la tienda.")
     sale_price = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
     # Este 'discount' es el descuento base/individual del producto
     discount = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'))

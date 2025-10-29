@@ -7,7 +7,7 @@ router.register(r'categories', views.CategoryViewSet)
 router.register(r'subcategories', views.SubcategoryViewSet)
 router.register(r'product-images', views.ProductImageViewSet)
 router.register(r'tags', views.TagViewSet)
-router.register(r'', views.ProductViewSet)
+router.register(r'', views.ProductViewSet, basename='product')
 
 urlpatterns = [
     path('relevant-tags/', views.RelevantTagsView.as_view(), name='relevant-tags-list'),

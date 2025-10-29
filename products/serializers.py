@@ -12,7 +12,7 @@ class CategorySerializer(serializers.ModelSerializer):
     # image_upload = serializers.ImageField(source='image', write_only=True, required=False)
     class Meta:
         model = Category
-        fields = ['id', 'name', 'image', 'description'] # Añadir image y description
+        fields = ['id', 'name', 'image', 'description', 'is_active'] # Añadir image y description
         # Si se usa image_upload:
         # fields = ['id', 'name', 'image', 'description', 'image_upload']
         # fields = '__all__'
@@ -22,7 +22,7 @@ class SubcategorySerializer(serializers.ModelSerializer):
     category_id = serializers.PrimaryKeyRelatedField(read_only=True, source='category.id')
     class Meta:
         model = Subcategory
-        fields = ['id', 'name', 'image', 'description', 'category_id']
+        fields = ['id', 'name', 'image', 'description', 'category_id', 'is_active']
         # fields = '__all__'
 
 class TagSerializer(serializers.ModelSerializer):
@@ -86,6 +86,8 @@ class ProductSerializer(serializers.ModelSerializer):
             'final_sale_price',         # Precio final a pagar
             'has_discount',             # Booleano para UI
             'stock',
+            'is_active',
+            'is_service',
             'is_featured',
             'created_at', 'updated_at',
             'category', 'subcategory', 'images', 'tags',
