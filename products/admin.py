@@ -4,9 +4,9 @@ from django.utils.html import format_html
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'display_order','image_thumbnail', 'description_short') # Añadir miniatura
+    list_display = ('id', 'name', 'is_active', 'display_order','image_thumbnail', 'description_short') # Añadir miniatura
     search_fields = ('name', 'description')
-    list_editable = ('display_order',)
+    list_editable = ('is_active', 'display_order',)
     # Para mostrar la imagen en el formulario de edición y permitir la subida:
     fields = ('name', 'description', 'image', 'image_preview') # 'image' es el campo de subida
     readonly_fields = ('image_preview',) # Para mostrar la vista previa
@@ -30,8 +30,9 @@ class CategoryAdmin(admin.ModelAdmin):
 
 @admin.register(Subcategory)
 class SubcategoryAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'category', 'image_thumbnail', 'description_short')
-    list_filter = ('category',)
+    list_display = ('id', 'name', 'category', 'is_active', 'image_thumbnail', 'description_short')
+    list_filter = ('category', 'is_active')
+    list_editable = ('is_active',)
     search_fields = ('name', 'description', 'category__name')
     fields = ('name', 'category', 'description', 'image', 'image_preview')
     readonly_fields = ('image_preview',)
@@ -63,10 +64,10 @@ class ProductImageInline(admin.TabularInline):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ('id','name', 'category', 'subcategory','pp_display', 'final_price', 'stock', 'discount', 'is_featured')
-    list_filter = ('category', 'subcategory', 'tags', 'is_featured')
+    list_display = ('id','name', 'category', 'subcategory', 'is_active', 'is_service', 'pp_display', 'final_price', 'stock', 'discount', 'is_featured')
+    list_filter = ('is_active', 'is_service', 'category', 'subcategory', 'tags', 'is_featured')
     search_fields = ('name', 'description')
-    list_editable = ('is_featured',)
+    list_editable = ('is_active', 'is_service', 'is_featured',)
     inlines = [ProductImageInline]
     filter_horizontal = ('tags',)  # Para una mejor interfaz de selección de tags
     readonly_fields = ('final_price',)
@@ -80,6 +81,9 @@ class ProductAdmin(admin.ModelAdmin):
         ('Precios e Inventario', {
             'fields': ('purchase_price', 'sale_price', 'final_price', 'stock', 'discount')
         }),
+        ('Configuración Adicional', {
+            'fields': ('is_active', 'is_featured', 'is_service')
+        })
     )
 
     def pp_display(self, obj):
