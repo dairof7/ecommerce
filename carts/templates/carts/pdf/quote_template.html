@@ -28,6 +28,20 @@
     </div>
 {% endblock %}
 
+{% block totals_extra_rows %}
+    {# Calculamos el subtotal como la suma del total final y el descuento aplicado #}
+    <tr>
+        <td>Subtotal:</td>
+        <td class="text-right">{{ document.total|add:document.coupon_discount|currency }}</td>
+    </tr>
+    {% if document.coupon %}
+    <tr>
+        <td>Descuento ({{ document.coupon.code }}):</td>
+        <td class="text-right">-{{ document.coupon_discount|currency }}</td>
+    </tr>
+    {% endif %}
+{% endblock %}
+
 {% block footer_notes %}
     <div class="highlight-box">
         <strong>Próximos Pasos:</strong> Para confirmar tu pedido y coordinar el pago, contáctanos por WhatsApp al {{ shop_info.telefono }}.
