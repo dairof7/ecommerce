@@ -28,6 +28,17 @@
 {% endblock %}
 
 {% block totals_extra_rows %}
+    {# Calculamos el subtotal como la suma del total final y el descuento aplicado #}
+    <tr>
+        <td>Subtotal2:</td>
+        <td class="text-right">{{ document.total|add:document.coupon_discount|currency }}</td>
+    </tr>
+    {% if document.coupon %}
+    <tr>
+        <td>Descuento ({{ document.coupon.code }}):</td>
+        <td class="text-right">-{{ document.coupon_discount|currency }}</td>
+    </tr>
+    {% endif %}
     <tr>
         <td>Envío:</td>
         <td class="text-right">A convenir</td>

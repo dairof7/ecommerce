@@ -164,10 +164,6 @@
 
     <div class="totals-section">
         <table class="totals-table">
-            <tr>
-                <td>Subtotal:</td>
-                <td class="text-right">{{ document.total|currency }}</td>
-            </tr>
             {% block totals_extra_rows %}{% endblock %}
             <tr class="grand-total">
                 <td>TOTAL:</td>
