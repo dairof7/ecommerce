@@ -123,7 +123,7 @@ class Product(models.Model):
         effective_discount_percentage = dynamic_discount_percentage if self.discount == 0 else self.discount
 
         final_price = base_price * (Decimal('1.00') - (effective_discount_percentage / Decimal('100.00')))
-        rounded_price = final_price.quantize(Decimal('1E3'), rounding=ROUND_DOWN)
+        rounded_price = final_price.quantize(Decimal('1E2'), rounding=ROUND_DOWN)
         return rounded_price
 
     @property
