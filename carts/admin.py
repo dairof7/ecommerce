@@ -1,12 +1,17 @@
 # carts/admin.py
 from django.contrib import admin
 from .models import Cart, CartItem, Quote, QuoteItem, Coupon
-from django.urls import path
+from django.urls import path, reverse
 from django.shortcuts import render
 from django.utils import timezone
 from datetime import timedelta
 from django.db.models.functions import TruncMonth
 from django.db.models import Sum, F, DecimalField
+from django.http import HttpResponse
+from django.template.loader import render_to_string
+from weasyprint import HTML, CSS
+from django.utils.html import format_html
+from .tasks import get_shop_info
 
 class CartItemInline(admin.TabularInline):
     model = CartItem
@@ -31,11 +36,14 @@ class QuoteItemInline(admin.TabularInline):
         return False
 @admin.register(Quote)
 class QuoteAdmin(admin.ModelAdmin):
-    list_display = ('id', 'user', 'customer_name', 'customer_email', 'status', 'total', 'coupon', 'coupon_discount', 'created_at')
+    list_display = ('id', 'user', 'customer_name', 'customer_email', 'status', 'total', 'created_at', 'receipt_actions')
     list_filter = ('status', 'created_at', 'user')
     search_fields = ('user__username', 'customer_name', 'customer_email', 'coupon__code')
     readonly_fields = ('user', 'cart', 'created_at', 'updated_at', 'total', 'coupon_discount')
     inlines = [QuoteItemInline] # Mostrar los items de la cotización
+    
+    # Añadimos el campo a la tupla de ordenación para evitar errores
+    ordering = ('-created_at',)
 
     fieldsets = (
         (None, {
@@ -47,9 +55,82 @@ class QuoteAdmin(admin.ModelAdmin):
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
-            path('sales-dashboard/', self.admin_site.admin_view(self.sales_dashboard_view), name='carts_quote_sales_dashboard')
+            path('sales-dashboard/', self.admin_site.admin_view(self.sales_dashboard_view), name='carts_quote_sales_dashboard'),
+            path('<int:quote_id>/receipt/', self.admin_site.admin_view(self.view_receipt_pdf), name='view_receipt_pdf'),
         ]
         return custom_urls + urls
+
+    def view_receipt_pdf(self, request, quote_id):
+        """
+        Genera un PDF de 58mm con altura dinámica basada en el contenido
+        para simular impresión continua.
+        """
+        try:
+            quote = self.get_queryset(request).get(id=quote_id)
+        except Quote.DoesNotExist:
+            return HttpResponse("Este pedido no existe.", status=404)
+
+        shop_info = get_shop_info()
+        # Lógica de nombre del cliente (existente)
+        if quote.user:
+            customer_name = quote.user.get_full_name() or quote.user.username
+        else:
+            customer_name = quote.customer_name or 'Cliente'
+        
+        customer_info = {'name': customer_name}
+
+        # --- LÓGICA DE ALTURA DINÁMICA ---
+        # 1. Definimos una altura base para cabecera, footer y totales (ajustar según tu diseño)
+        base_height_mm = 90 
+        
+        # 2. Definimos altura estimada por ítem (considerando saltos de línea en descripciones largas)
+        item_height_mm = 12 
+        
+        # 3. Contamos los ítems (usando la relación inversa quoteitem_set o document.items)
+        # Nota: Asegúrate de que 'items' es el related_name correcto, o usa quoteitem_set
+        num_items = quote.items.count()
+        
+        # 4. Calculamos altura total
+        total_height = base_height_mm + (num_items * item_height_mm)
+        
+        # Aseguramos un mínimo razonable (por si hay 0 items o es muy corto)
+        if total_height < 60:
+            total_height = 60
+
+        context = {
+            'document': quote,
+            'shop_info': shop_info,
+            'customer_info': customer_info,
+        }
+
+        html_string = render_to_string('carts/pdf/receipt_58mm_template.html', context)
+        
+        # --- CSS DINÁMICO ---
+        # Inyectamos la altura calculada en la directiva @page
+        # Importante: margin: 0mm para que el body controle los márgenes internos
+        css_string = f'@page {{ size: 58mm {total_height}mm; margin: 0mm; }}'
+        
+        css = CSS(string=css_string)
+        
+        pdf_file = HTML(string=html_string).write_pdf(stylesheets=[css])
+
+        response = HttpResponse(pdf_file, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="recibo_58mm_{quote.id}.pdf"'
+        return response
+    
+    def receipt_actions(self, obj):
+        # Solo muestra el botón si el estado es 'paid' o 'shipped'
+        if obj.status in ['pending', 'paid', 'shipped']:
+            url = reverse('admin:view_receipt_pdf', args=[obj.id])
+            return format_html('<a class="button" href="{}" target="_blank">Ver Recibo</a>', url)
+        return "N/A"
+    receipt_actions.short_description = 'Recibo (58mm)'
+    receipt_actions.allow_tags = True
+
+
+    # --- DASHBOARD DE VENTAS (sin cambios) ---
+    # ... (el resto del código del dashboard se mantiene igual)
+
 
     def sales_dashboard_view(self, request):
         current_time = timezone.now()
