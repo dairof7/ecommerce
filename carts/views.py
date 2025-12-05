@@ -13,8 +13,11 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 from django_filters.rest_framework import DjangoFilterBackend
 from django.contrib.auth import get_user_model
-from .tasks import send_quote_pdf_email
-from .tasks import send_invoice_pdf_email
+from .tasks import send_quote_pdf_email, send_invoice_pdf_email, get_shop_info
+from django.http import HttpResponse
+from django.template.loader import render_to_string
+from weasyprint import HTML, CSS
+
 User = get_user_model()
 
 
@@ -485,6 +488,66 @@ class QuoteViewSet(viewsets.ModelViewSet):
             "message": f"Venta para la cotización #{quote.pk} finalizada exitosamente. Estado cambiado a 'pagado'.", 
             "quote": serializer.data
         }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='receipt')
+    def receipt(self, request, pk=None):
+        """
+        Genera y devuelve un PDF de 58mm para una cotización específica.
+        Accesible solo para administradores.
+        """
+        if not request.user.is_staff:
+            return Response({"error": "No autorizado para realizar esta acción."}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            quote = self.get_object()
+        except Quote.DoesNotExist:
+            return HttpResponse("Este pedido no existe.", status=404)
+
+        # Permitir recibos para estados 'pending', 'paid' o 'shipped'
+        if quote.status not in ['pending', 'paid', 'shipped']:
+            return HttpResponse(f"No se puede generar un recibo para un pedido con estado '{quote.status}'.", status=400)
+
+        shop_info = get_shop_info()
+
+        # Lógica para obtener el nombre del cliente
+        if quote.user:
+            customer_name = quote.user.get_full_name() or quote.user.username
+        else:
+            customer_name = quote.customer_name or 'Cliente'
+        
+        customer_info = {'name': customer_name}
+
+        # --- LÓGICA DE ALTURA DINÁMICA ---
+        base_height_mm = 90 
+        item_height_mm = 12
+        num_items = quote.items.count()
+        total_height = base_height_mm + (num_items * item_height_mm)
+        
+        if total_height < 60:
+            total_height = 60
+
+        context = {
+            'document': quote,
+            'shop_info': shop_info,
+            'customer_info': customer_info,
+        }
+
+        html_string = render_to_string('carts/pdf/receipt_58mm_template.html', context)
+        
+        # --- CSS DINÁMICO ---
+        css_string = f'@page {{ size: 58mm {total_height}mm; margin: 0mm; }}'
+        css = CSS(string=css_string)
+        
+        try:
+            pdf_file = HTML(string=html_string).write_pdf(stylesheets=[css])
+        except Exception as e:
+            # Log del error en el servidor para depuración
+            print(f"Error generando PDF para Quote {quote.id}: {e}")
+            return HttpResponse("Error al generar el recibo en PDF.", status=500)
+
+        response = HttpResponse(pdf_file, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="recibo_58mm_{quote.id}.pdf"'
+        return response
 
     @action(detail=True, methods=['post'])
     def cancel_quote(self, request, pk=None):

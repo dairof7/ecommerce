@@ -120,7 +120,7 @@ class QuoteAdmin(admin.ModelAdmin):
     
     def receipt_actions(self, obj):
         # Solo muestra el botón si el estado es 'paid' o 'shipped'
-        if obj.status in ['paid', 'shipped']:
+        if obj.status in ['pending', 'paid', 'shipped']:
             url = reverse('admin:view_receipt_pdf', args=[obj.id])
             return format_html('<a class="button" href="{}" target="_blank">Ver Recibo</a>', url)
         return "N/A"
