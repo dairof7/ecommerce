@@ -5,8 +5,9 @@ from django.urls import path, reverse
 from django.shortcuts import render
 from django.utils import timezone
 from datetime import timedelta
-from django.db.models.functions import TruncMonth
-from django.db.models import Sum, F, DecimalField
+from decimal import Decimal
+from django.db.models.functions import TruncMonth, Coalesce
+from django.db.models import Sum, F, DecimalField, OuterRef, Subquery
 from django.http import HttpResponse
 from django.template.loader import render_to_string
 from weasyprint import HTML, CSS
@@ -180,18 +181,37 @@ class QuoteAdmin(admin.ModelAdmin):
                 next_year += 1
             temp_date = temp_date.replace(year=next_year, month=next_month)
 
-        # --- Prepare data for "Total Sales" chart ---
+        # --- Prepare data for "Total Sales" and "Monthly Profit" chart ---
         sales_data_dict = {label: 0 for label in month_labels}
+        profit_data_dict = {label: 0 for label in month_labels}
+
+        cost_subquery = QuoteItem.objects.filter(
+            quote=OuterRef('pk')
+        ).values('quote').annotate(
+            total_cost=Sum(F('quantity') * Coalesce(F('product__purchase_price'), Decimal('0.0')), output_field=DecimalField())
+        ).values('total_cost')
+
         sales_last_4_months = Quote.objects.filter(
             status__in=['paid', 'shipped'],
             created_at__gte=four_months_ago
-        ).annotate(month_year=TruncMonth('created_at')).values('month_year').annotate(total_sales=Sum('total'))
+        ).annotate(
+            month_year=TruncMonth('created_at'),
+            quote_cost=Subquery(cost_subquery, output_field=DecimalField())
+        ).values('month_year').annotate(
+            total_sales=Sum('total', output_field=DecimalField()),
+            total_cost=Sum('quote_cost', output_field=DecimalField())
+        )
 
         for sale in sales_last_4_months:
             label = sale['month_year'].strftime("%b %Y")
             if label in sales_data_dict:
-                sales_data_dict[label] = float(sale['total_sales'])
+                sales_val = float(sale['total_sales'] or 0)
+                cost_val = float(sale['total_cost'] or 0)
+                sales_data_dict[label] = sales_val
+                profit_data_dict[label] = sales_val - cost_val
+
         sales_chart_data = {"labels": list(sales_data_dict.keys()), "data": list(sales_data_dict.values())}
+        profit_chart_data = {"labels": list(profit_data_dict.keys()), "data": list(profit_data_dict.values())}
 
         # --- Prepare data for "Sales by Category" chart ---
         sales_by_cat_month = QuoteItem.objects.filter(
@@ -246,6 +266,7 @@ class QuoteAdmin(admin.ModelAdmin):
            top_selling_products=list(top_selling_products),
            top_profit_products=list(top_profit_products),
            sales_chart_data=sales_chart_data,
+           profit_chart_data=profit_chart_data,
            category_sales_chart_data=category_sales_chart_data,
         )
         return render(request, "admin/sales_dashboard.html", context)

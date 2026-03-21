@@ -107,6 +107,10 @@
   <div class="chart-container">
     <canvas id="totalSalesChart"></canvas>
   </div>
+
+  <div class="chart-container">
+    <canvas id="profitChart"></canvas>
+  </div>
 </div>
 
 <div class="dashboard-grid">
@@ -116,6 +120,7 @@
 </div>
 
 {{ sales_chart_data|json_script:"sales-chart-data" }}
+{{ profit_chart_data|json_script:"profit-chart-data" }}
 {{ category_sales_chart_data|json_script:"category-sales-chart-data" }}
 {% endblock %}
 
@@ -168,6 +173,44 @@
                 ticks: {
                   callback: function(value) { return formatCurrency(value); }
                 }
+              }
+            }
+          }
+        });
+      }
+
+      // 1.5 Profit Chart (Bar)
+      const profitData = JSON.parse(document.getElementById('profit-chart-data').textContent);
+      if (profitData && profitData.labels.length > 0) {
+        const profitCtx = document.getElementById('profitChart').getContext('2d');
+        new Chart(profitCtx, {
+          type: 'bar',
+          data: {
+            labels: profitData.labels,
+            datasets: [{
+              label: 'Ganancias (Restando Cupones)',
+              data: profitData.data,
+              backgroundColor: 'rgba(75, 192, 192, 0.5)',
+              borderColor: 'rgba(75, 192, 192, 1)',
+              borderWidth: 1
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              title: { display: true, text: 'Ganancias Mensuales (Últimos 4 meses)', font: { size: 16 } },
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: function(context) { return ' ' + formatCurrency(context.parsed.y); }
+                }
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                ticks: { callback: function(value) { return formatCurrency(value); } }
               }
             }
           }
