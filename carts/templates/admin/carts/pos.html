@@ -1,0 +1,314 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+  /* Custom styles to match the admin look but with POS layout */
+  .pos-container { display: flex; gap: 20px; flex-wrap: wrap; }
+  .pos-cart, .pos-products { flex: 1; min-width: 300px; background: #fff; padding: 15px; border: 1px solid #ccc; border-radius: 4px; }
+  .pos-products { flex: 2; }
+  .pos-input { width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+  .pos-btn { background: #417690; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; }
+  .pos-btn:hover { background: #205067; }
+  .pos-btn:disabled { background: #aaa; cursor: not-allowed; }
+  .search-results { list-style: none; margin: 0; padding: 0; border: 1px solid #ccc; max-height: 200px; overflow-y: auto; position: absolute; background: white; width: calc(100% - 30px); z-index: 10; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+  .search-results li { padding: 8px; border-bottom: 1px solid #eee; cursor: pointer; }
+  .search-results li:hover { background: #f0f0f0; }
+  .cart-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #eee; }
+  .cart-item-info { flex: 1; }
+  .cart-item-actions { display: flex; gap: 10px; align-items: center; }
+  .pos-summary { margin-top: 20px; border-top: 2px solid #ccc; padding-top: 10px; }
+  .pos-summary p { display: flex; justify-content: space-between; margin: 5px 0; font-size: 14px; }
+  .pos-summary h3 { display: flex; justify-content: space-between; font-size: 18px; margin: 10px 0; }
+  .relative { position: relative; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="pos-app">
+    <div class="pos-container">
+        <!-- Columna 1: Cliente y Resumen -->
+        <div class="pos-cart">
+            <h2>Datos del Cliente</h2>
+            <div class="relative">
+                <input type="text" id="user-search" class="pos-input" placeholder="Buscar Cliente Registrado..." autocomplete="off">
+                <ul id="user-results" class="search-results" style="display: none;"></ul>
+            </div>
+            <div id="selected-user-info" style="display:none; background: #e8f5e9; padding: 10px; border-radius: 4px; margin-bottom: 10px;">
+                <strong>Cliente:</strong> <span id="selected-user-name"></span>
+                <button type="button" id="clear-user-btn" style="float: right; color: red; border: none; background: none; cursor: pointer; font-weight: bold;">X</button>
+            </div>
+            <div id="guest-form">
+                <p style="font-size: 12px; color: #666; margin-bottom: 5px;">O ingresa datos para invitado:</p>
+                <input type="text" id="guest-name" class="pos-input" placeholder="Nombre">
+                <input type="email" id="guest-email" class="pos-input" placeholder="Email">
+                <input type="text" id="guest-document" class="pos-input" placeholder="Documento">
+                <input type="text" id="guest-phone" class="pos-input" placeholder="Teléfono">
+            </div>
+
+            <h2 style="margin-top: 20px;">Cupón y Resumen</h2>
+            <div style="display: flex; gap: 10px;">
+                <input type="text" id="coupon-code" class="pos-input" placeholder="Código de Descuento" style="margin-bottom:0;">
+                <button type="button" id="apply-coupon-btn" class="pos-btn" style="padding: 8px;">Aplicar</button>
+            </div>
+            <div class="pos-summary">
+                <p>Subtotal (<span id="cart-count">0</span> items) <span id="cart-subtotal">$0</span></p>
+                <p id="coupon-row" style="display: none; color: green;">Descuento (<span id="coupon-applied-code"></span>) <span id="cart-discount">-$0</span> <button id="remove-coupon-btn" style="color:red;border:none;background:none;cursor:pointer;font-weight:bold;" title="Remover">[x]</button></p>
+                <h3>Total <span id="cart-total">$0</span></h3>
+            </div>
+            <button type="button" id="checkout-btn" class="pos-btn" style="width: 100%; margin-top: 15px; font-size: 16px; background-color: #28a745;">Registrar Venta</button>
+        </div>
+
+        <!-- Columna 2: Productos y Carrito -->
+        <div class="pos-products">
+            <h2>Añadir Productos</h2>
+            <div class="relative">
+                <input type="text" id="product-search" class="pos-input" placeholder="Buscar producto por nombre..." autocomplete="off">
+                <ul id="product-results" class="search-results" style="display: none;"></ul>
+            </div>
+
+            <h2 style="margin-top: 20px;">Carrito Actual</h2>
+            <div id="cart-items">
+                <p style="color: #666; font-style: italic;">Cargando carrito...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const csrfToken = '{{ csrf_token }}';
+    
+    let cart = null;
+    let selectedUser = null;
+
+    const elCartItems = document.getElementById('cart-items');
+    const elCartCount = document.getElementById('cart-count');
+    const elCartSubtotal = document.getElementById('cart-subtotal');
+    const elCartTotal = document.getElementById('cart-total');
+    const elCartDiscount = document.getElementById('cart-discount');
+    const elCouponRow = document.getElementById('coupon-row');
+    const elCouponAppliedCode = document.getElementById('coupon-applied-code');
+
+    const formatCurrency = (val) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(val || 0);
+
+    async function apiCall(url, method='GET', body=null) {
+        const headers = {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        };
+        const options = { method, headers };
+        if (body) options.body = JSON.stringify(body);
+        
+        const res = await fetch(url, options);
+        if (!res.ok) {
+            const err = await res.json().catch(()=>({error: 'Error de Red'}));
+            throw err;
+        }
+        if (res.status === 204) return null;
+        return await res.json();
+    }
+
+    async function loadCart() {
+        try {
+            cart = await apiCall('/api/carts/carts/');
+            renderCart();
+        } catch (e) {
+            elCartItems.innerHTML = '<p style="color:red;">Error cargando el carrito.</p>';
+        }
+    }
+
+    function renderCart() {
+        if (!cart || !cart.items || cart.items.length === 0) {
+            elCartItems.innerHTML = '<p style="color: #666; font-style: italic;">El carrito está vacío.</p>';
+            elCartCount.innerText = '0';
+            elCartSubtotal.innerText = formatCurrency(0);
+            elCartTotal.innerText = formatCurrency(0);
+            elCouponRow.style.display = 'none';
+            document.getElementById('checkout-btn').disabled = true;
+            return;
+        }
+
+        document.getElementById('checkout-btn').disabled = false;
+        let count = cart.items.reduce((s, i) => s + i.quantity, 0);
+        elCartCount.innerText = count;
+        elCartSubtotal.innerText = formatCurrency(cart.subtotal);
+        elCartTotal.innerText = formatCurrency(cart.total);
+
+        if (cart.coupon) {
+            elCouponRow.style.display = 'flex';
+            elCouponAppliedCode.innerText = cart.coupon.code;
+            elCartDiscount.innerText = '-' + formatCurrency(cart.coupon_discount);
+        } else {
+            elCouponRow.style.display = 'none';
+        }
+
+        let html = '';
+        cart.items.forEach(item => {
+            html += `
+            <div class="cart-item">
+                <div class="cart-item-info">
+                    <strong>${item.product_name}</strong><br>
+                    <small>${formatCurrency(item.product_final_price)}</small>
+                </div>
+                <div class="cart-item-actions">
+                    <button class="pos-btn" style="padding: 2px 8px;" onclick="updateQuantity(${item.product_id}, ${item.quantity - 1})">-</button>
+                    <span>${item.quantity}</span>
+                    <button class="pos-btn" style="padding: 2px 8px;" onclick="updateQuantity(${item.product_id}, ${item.quantity + 1})">+</button>
+                    <button class="pos-btn" style="background:#dc3545; padding: 2px 8px;" onclick="removeItem(${item.id})">X</button>
+                </div>
+            </div>`;
+        });
+        elCartItems.innerHTML = html;
+    }
+
+    window.updateQuantity = async (productId, qty) => {
+        try {
+            cart = await apiCall('/api/carts/carts/add_item/', 'POST', { product_id: productId, quantity: qty });
+            renderCart();
+        } catch (e) {
+            alert(e.error || 'Error actualizando cantidad');
+        }
+    };
+
+    window.removeItem = async (itemId) => {
+        try {
+            cart = await apiCall(`/api/carts/carts/remove_item/${itemId}/`, 'DELETE');
+            renderCart();
+        } catch (e) {
+            alert(e.error || 'Error eliminando item');
+        }
+    };
+
+    let pSearchTimeout;
+    const pInput = document.getElementById('product-search');
+    const pResults = document.getElementById('product-results');
+    pInput.addEventListener('input', (e) => {
+        clearTimeout(pSearchTimeout);
+        const term = e.target.value;
+        if (term.length < 2) {
+            pResults.style.display = 'none';
+            return;
+        }
+        pSearchTimeout = setTimeout(async () => {
+            try {
+                const data = await apiCall(`/api/products/?search=${term}&limit=5`);
+                const items = data.results || [];
+                pResults.innerHTML = '';
+                if (items.length === 0) {
+                    pResults.innerHTML = '<li>No se encontraron productos</li>';
+                } else {
+                    items.forEach(p => {
+                        let li = document.createElement('li');
+                        li.innerHTML = `<strong>${p.name}</strong> - ${formatCurrency(p.final_sale_price)} <br><small>Stock: ${p.stock}</small>`;
+                        li.onclick = async () => {
+                            if (p.stock <= 0) { alert('Agotado'); return; }
+                            pInput.value = '';
+                            pResults.style.display = 'none';
+                            cart = await apiCall('/api/carts/carts/add_item/', 'POST', { product_id: p.id, quantity: 1 });
+                            renderCart();
+                        };
+                        pResults.appendChild(li);
+                    });
+                }
+                pResults.style.display = 'block';
+            } catch (e) {}
+        }, 300);
+    });
+
+    let uSearchTimeout;
+    const uInput = document.getElementById('user-search');
+    const uResults = document.getElementById('user-results');
+    uInput.addEventListener('input', (e) => {
+        clearTimeout(uSearchTimeout);
+        const term = e.target.value;
+        if (term.length < 2) {
+            uResults.style.display = 'none';
+            return;
+        }
+        uSearchTimeout = setTimeout(async () => {
+            try {
+                const data = await apiCall(`/api/accounts/user-search/?search=${term}`);
+                const items = data.results || data || [];
+                uResults.innerHTML = '';
+                if (items.length === 0) {
+                    uResults.innerHTML = '<li>No se encontraron clientes</li>';
+                } else {
+                    items.forEach(u => {
+                        let li = document.createElement('li');
+                        const displayName = u.full_name || (u.first_name + ' ' + u.last_name).trim() || u.email;
+                        li.innerHTML = `<strong>${displayName}</strong> <small>(${u.email})</small>`;
+                        li.onclick = () => {
+                            selectedUser = u;
+                            document.getElementById('selected-user-name').innerText = displayName;
+                            document.getElementById('selected-user-info').style.display = 'block';
+                            document.getElementById('guest-form').style.display = 'none';
+                            uInput.value = '';
+                            uResults.style.display = 'none';
+                        };
+                        uResults.appendChild(li);
+                    });
+                }
+                uResults.style.display = 'block';
+            } catch (e) {}
+        }, 300);
+    });
+
+    document.getElementById('clear-user-btn').onclick = () => {
+        selectedUser = null;
+        document.getElementById('selected-user-info').style.display = 'none';
+        document.getElementById('guest-form').style.display = 'block';
+    };
+
+    document.getElementById('apply-coupon-btn').onclick = async () => {
+        const code = document.getElementById('coupon-code').value.trim();
+        if (!code) return;
+        try {
+            cart = await apiCall('/api/carts/carts/apply-coupon/', 'POST', { code });
+            document.getElementById('coupon-code').value = '';
+            renderCart();
+        } catch (e) {
+            alert(e.error || 'Error aplicando cupón');
+        }
+    };
+
+    document.getElementById('remove-coupon-btn').onclick = async () => {
+        try {
+            cart = await apiCall('/api/carts/carts/remove-coupon/', 'POST', {});
+            renderCart();
+        } catch (e) {
+            alert(e.error || 'Error removiendo cupón');
+        }
+    };
+
+    document.getElementById('checkout-btn').onclick = async () => {
+        const payload = {
+            customer: {
+                name: document.getElementById('guest-name').value,
+                email: document.getElementById('guest-email').value,
+                document: document.getElementById('guest-document').value,
+                phone: document.getElementById('guest-phone').value,
+            },
+            user_id: selectedUser ? selectedUser.id : null
+        };
+        try {
+            document.getElementById('checkout-btn').disabled = true;
+            document.getElementById('checkout-btn').innerText = 'Procesando...';
+            await apiCall('/api/carts/carts/create_quote/', 'POST', payload);
+            alert('Venta registrada exitosamente.');
+            window.location.href = '../'; 
+        } catch (e) {
+            alert(e.error || 'Error registrando la venta');
+            document.getElementById('checkout-btn').disabled = false;
+            document.getElementById('checkout-btn').innerText = 'Registrar Venta';
+        }
+    };
+
+    document.addEventListener('click', (e) => {
+        if (!pInput.contains(e.target) && !pResults.contains(e.target)) pResults.style.display = 'none';
+        if (!uInput.contains(e.target) && !uResults.contains(e.target)) uResults.style.display = 'none';
+    });
+
+    loadCart();
+</script>
+{% endblock %}

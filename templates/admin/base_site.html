@@ -1,0 +1,14 @@
+{% extends "admin/base.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block branding %}
+<h1 id="site-name"><a href="{% url 'admin:index' %}">{{ site_header|default:_('Django administration') }}</a></h1>
+{% endblock %}
+
+{% block userlinks %}
+    <a href="{% url 'admin:carts_quote_pos' %}" style="color: #28a745; font-weight: bold; margin-right: 15px; border: 1px solid #28a745; padding: 2px 8px; border-radius: 4px; background: white;">POS (Punto de Venta)</a>
+    <a href="{% url 'admin:carts_quote_sales_dashboard' %}" style="margin-right: 15px; font-weight: bold;">📊 Reportes</a>
+    {{ block.super }}
+{% endblock %}

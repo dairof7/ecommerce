@@ -2,8 +2,11 @@
 from django.contrib import admin
 from .models import Cart, CartItem, Quote, QuoteItem, Coupon
 from django.urls import path, reverse
-from django.shortcuts import render
+from django.shortcuts import render, redirect
+from django.contrib import messages
 from django.utils import timezone
+from django.db import transaction
+from products.models import Product
 from datetime import timedelta
 from decimal import Decimal
 from django.db.models.functions import TruncMonth, Coalesce
@@ -37,7 +40,7 @@ class QuoteItemInline(admin.TabularInline):
         return False
 @admin.register(Quote)
 class QuoteAdmin(admin.ModelAdmin):
-    list_display = ('id', 'user', 'customer_name', 'customer_email', 'status', 'total', 'created_at', 'receipt_actions')
+    list_display = ('id', 'user', 'customer_name', 'customer_email', 'status', 'total', 'created_at', 'receipt_actions', 'quote_actions')
     list_filter = ('status', 'created_at', 'user')
     search_fields = ('user__username', 'customer_name', 'customer_email', 'coupon__code')
     readonly_fields = ('user', 'cart', 'created_at', 'updated_at', 'total', 'coupon_discount')
@@ -56,8 +59,12 @@ class QuoteAdmin(admin.ModelAdmin):
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
+            path('pos/', self.admin_site.admin_view(self.pos_view), name='carts_quote_pos'),
             path('sales-dashboard/', self.admin_site.admin_view(self.sales_dashboard_view), name='carts_quote_sales_dashboard'),
             path('<int:quote_id>/receipt/', self.admin_site.admin_view(self.view_receipt_pdf), name='view_receipt_pdf'),
+            path('<int:quote_id>/mark-paid/', self.admin_site.admin_view(self.mark_quote_paid), name='quote_mark_paid'),
+            path('<int:quote_id>/mark-shipped/', self.admin_site.admin_view(self.mark_quote_shipped), name='quote_mark_shipped'),
+            path('<int:quote_id>/cancel/', self.admin_site.admin_view(self.cancel_quote), name='quote_cancel'),
         ]
         return custom_urls + urls
 
@@ -127,7 +134,80 @@ class QuoteAdmin(admin.ModelAdmin):
         return "N/A"
     receipt_actions.short_description = 'Recibo (58mm)'
     receipt_actions.allow_tags = True
+    
+    def quote_actions(self, obj):
+        actions = []
+        if obj.status == 'pending':
+            actions.append(f'<a class="button" style="background-color: #28a745; margin-right: 5px;" href="{reverse("admin:quote_mark_paid", args=[obj.id])}">Marcar Pagado</a>')
+            actions.append(f'<a class="button" style="background-color: #dc3545;" href="{reverse("admin:quote_cancel", args=[obj.id])}">Cancelar</a>')
+        elif obj.status == 'paid':
+            actions.append(f'<a class="button" style="background-color: #007bff; margin-right: 5px;" href="{reverse("admin:quote_mark_shipped", args=[obj.id])}">Marcar Enviado</a>')
+            actions.append(f'<a class="button" style="background-color: #dc3545;" href="{reverse("admin:quote_cancel", args=[obj.id])}">Cancelar</a>')
+        return format_html("".join(actions))
+    quote_actions.short_description = 'Acciones Rápidas'
+    quote_actions.allow_tags = True
 
+    def mark_quote_paid(self, request, quote_id):
+        quote = self.get_object(request, str(quote_id))
+        if quote and quote.status == 'pending':
+            try:
+                with transaction.atomic():
+                    for item in quote.items.all():
+                        product = Product.objects.select_for_update().get(pk=item.product.pk)
+                        if product.stock < item.quantity:
+                            raise ValueError(f"Stock insuficiente para '{product.name}'. Disponible: {product.stock}, Solicitado: {item.quantity}")
+                        product.stock -= item.quantity
+                        product.save()
+
+                    if quote.coupon:
+                        Coupon.objects.filter(pk=quote.coupon.pk).update(uses_count=F('uses_count') + 1)
+
+                    quote.status = 'paid'
+                    quote.save()
+                    self.message_user(request, f"Cotización #{quote.id} marcada como Pagada.", messages.SUCCESS)
+            except ValueError as e:
+                self.message_user(request, str(e), messages.ERROR)
+            except Exception as e:
+                self.message_user(request, "Error inesperado al marcar como pagada.", messages.ERROR)
+        return redirect('admin:carts_quote_changelist')
+
+    def mark_quote_shipped(self, request, quote_id):
+        quote = self.get_object(request, str(quote_id))
+        if quote and quote.status == 'paid':
+            quote.status = 'shipped'
+            quote.save()
+            self.message_user(request, f"Cotización #{quote.id} marcada como Enviada.", messages.SUCCESS)
+        return redirect('admin:carts_quote_changelist')
+
+    def cancel_quote(self, request, quote_id):
+        quote = self.get_object(request, str(quote_id))
+        if quote and quote.status in ['pending', 'paid']:
+            previous_status = quote.status
+            try:
+                with transaction.atomic():
+                    quote.status = 'cancelled'
+                    quote.save()
+
+                    if previous_status == 'paid':
+                        for item in quote.items.all():
+                            product = Product.objects.select_for_update().get(pk=item.product.pk)
+                            product.stock += item.quantity
+                            product.save()
+                        
+                        if quote.coupon:
+                            Coupon.objects.filter(pk=quote.coupon.pk, uses_count__gt=0).update(uses_count=F('uses_count') - 1)
+                            
+                    self.message_user(request, f"Cotización #{quote.id} cancelada exitosamente." + (" Stock restaurado." if previous_status == 'paid' else ""), messages.WARNING)
+            except Exception as e:
+                self.message_user(request, "Error al cancelar la cotización.", messages.ERROR)
+        return redirect('admin:carts_quote_changelist')
+
+    def pos_view(self, request):
+        context = dict(
+           self.admin_site.each_context(request),
+           title="Punto de Venta (POS)"
+        )
+        return render(request, "admin/carts/pos.html", context)
 
     # --- DASHBOARD DE VENTAS (sin cambios) ---
     # ... (el resto del código del dashboard se mantiene igual)
