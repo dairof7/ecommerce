@@ -214,17 +214,47 @@ class QuoteAdmin(admin.ModelAdmin):
 
 
     def sales_dashboard_view(self, request):
+        import calendar
+        from datetime import datetime
         current_time = timezone.now()
         
         # Definir el número de items a mostrar en los rankings "Top"
         TOP_N = 10
         
-        # 1. Top N Best-Selling & Most Profitable Products (Last 4 Months)
-        four_months_ago_total = current_time - timedelta(days=120)
+        # Determine date range (default: last 6 months)
+        end_date_default = current_time.date()
+        m = end_date_default.month - 5
+        y = end_date_default.year
+        while m <= 0:
+            m += 12
+            y -= 1
+        start_date_default = end_date_default.replace(year=y, month=m, day=1)
 
+        start_date_str = request.GET.get('start_date')
+        end_date_str = request.GET.get('end_date')
+
+        if start_date_str and end_date_str:
+            try:
+                start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+            except ValueError:
+                start_date = start_date_default
+                end_date = end_date_default
+        else:
+            start_date = start_date_default
+            end_date = end_date_default
+
+        if start_date > end_date:
+            start_date, end_date = end_date, start_date
+
+        start_datetime = timezone.make_aware(datetime.combine(start_date, datetime.min.time()))
+        end_datetime = timezone.make_aware(datetime.combine(end_date, datetime.max.time()))
+
+        # 1. Top N Best-Selling & Most Profitable Products
         base_query = QuoteItem.objects.filter(
             quote__status__in=['paid', 'shipped'],
-            quote__created_at__gte=four_months_ago_total,
+            quote__created_at__gte=start_datetime,
+            quote__created_at__lte=end_datetime,
             product__purchase_price__isnull=False
         ).values('product__name').annotate(
             total_sold=Sum('quantity'),
@@ -237,22 +267,13 @@ class QuoteAdmin(admin.ModelAdmin):
         top_selling_products = base_query.order_by('-total_sold')[:TOP_N]
         top_profit_products = base_query.order_by('-total_profit')[:TOP_N]
 
-        # 2. Total Sales & Category Sales (Last 4 Months)
-        # --- Generate labels and date range for the last 4 months ---
-        months_to_show = 4
-        today = current_time.date()
+        # 2. Total Sales & Category Sales
+        # --- Generate labels and date range ---
         month_labels = []
-        first_day_of_current_month = today.replace(day=1)
+        temp_date = start_date.replace(day=1)
+        end_month_first_day = end_date.replace(day=1)
 
-        start_date_year = first_day_of_current_month.year
-        start_date_month = first_day_of_current_month.month - (months_to_show - 1)
-        while start_date_month <= 0:
-            start_date_month += 12
-            start_date_year -= 1
-        four_months_ago = first_day_of_current_month.replace(year=start_date_year, month=start_date_month)
-
-        temp_date = four_months_ago
-        for _ in range(months_to_show):
+        while temp_date <= end_month_first_day:
             month_labels.append(temp_date.strftime("%b %Y"))
             next_month = temp_date.month + 1
             next_year = temp_date.year
@@ -260,6 +281,9 @@ class QuoteAdmin(admin.ModelAdmin):
                 next_month = 1
                 next_year += 1
             temp_date = temp_date.replace(year=next_year, month=next_month)
+
+        if not month_labels:
+            month_labels.append(start_date.strftime("%b %Y"))
 
         # --- Prepare data for "Total Sales" and "Monthly Profit" chart ---
         sales_data_dict = {label: 0 for label in month_labels}
@@ -271,9 +295,10 @@ class QuoteAdmin(admin.ModelAdmin):
             total_cost=Sum(F('quantity') * Coalesce(F('product__purchase_price'), Decimal('0.0')), output_field=DecimalField())
         ).values('total_cost')
 
-        sales_last_4_months = Quote.objects.filter(
+        sales_in_range = Quote.objects.filter(
             status__in=['paid', 'shipped'],
-            created_at__gte=four_months_ago
+            created_at__gte=start_datetime,
+            created_at__lte=end_datetime
         ).annotate(
             month_year=TruncMonth('created_at'),
             quote_cost=Subquery(cost_subquery, output_field=DecimalField())
@@ -282,13 +307,14 @@ class QuoteAdmin(admin.ModelAdmin):
             total_cost=Sum('quote_cost', output_field=DecimalField())
         )
 
-        for sale in sales_last_4_months:
-            label = sale['month_year'].strftime("%b %Y")
-            if label in sales_data_dict:
-                sales_val = float(sale['total_sales'] or 0)
-                cost_val = float(sale['total_cost'] or 0)
-                sales_data_dict[label] = sales_val
-                profit_data_dict[label] = sales_val - cost_val
+        for sale in sales_in_range:
+            if sale['month_year']:
+                label = sale['month_year'].strftime("%b %Y")
+                if label in sales_data_dict:
+                    sales_val = float(sale['total_sales'] or 0)
+                    cost_val = float(sale['total_cost'] or 0)
+                    sales_data_dict[label] = sales_val
+                    profit_data_dict[label] = sales_val - cost_val
 
         sales_chart_data = {"labels": list(sales_data_dict.keys()), "data": list(sales_data_dict.values())}
         profit_chart_data = {"labels": list(profit_data_dict.keys()), "data": list(profit_data_dict.values())}
@@ -296,7 +322,8 @@ class QuoteAdmin(admin.ModelAdmin):
         # --- Prepare data for "Sales by Category" chart ---
         sales_by_cat_month = QuoteItem.objects.filter(
             quote__status__in=['paid', 'shipped'],
-            quote__created_at__gte=four_months_ago
+            quote__created_at__gte=start_datetime,
+            quote__created_at__lte=end_datetime
         ).annotate(
             month_year=TruncMonth('quote__created_at')
         ).values(
@@ -308,7 +335,7 @@ class QuoteAdmin(admin.ModelAdmin):
 
         for item in sales_by_cat_month:
             category_name = item.get('product__category__name')
-            if not category_name: continue
+            if not category_name or not item['month_year']: continue
             month_label = item['month_year'].strftime("%b %Y")
             if month_label in month_labels and category_name in category_sales_data:
                 category_sales_data[category_name][month_label] = float(item['total_sales'])
@@ -348,8 +375,11 @@ class QuoteAdmin(admin.ModelAdmin):
            sales_chart_data=sales_chart_data,
            profit_chart_data=profit_chart_data,
            category_sales_chart_data=category_sales_chart_data,
+           start_date=start_date.strftime('%Y-%m-%d'),
+           end_date=end_date.strftime('%Y-%m-%d')
         )
         return render(request, "admin/sales_dashboard.html", context)
+
 
 
 @admin.register(Coupon)
