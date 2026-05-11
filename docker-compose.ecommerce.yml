@@ -126,6 +126,7 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./logs/nginx:/var/log/nginx
       - static_volume:/srv/www/staticfiles
       - media_volume:/srv/www/mediafiles
       - /opt/certbot/conf:/etc/letsencrypt:ro  # Monta los certificados como solo lectura
