@@ -113,22 +113,22 @@ class ProductViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='new-arrivals')
     def new_products(self, request):
         """
-        Retorna una lista de productos marcados como destacados (is_featured=True).
+        Retorna una lista de productos nuevos.
         """
-        # Obtener el queryset base del ViewSet para reutilizar filtros y anotaciones si los hubiera
-        base_queryset = self.get_queryset()
-        featured_qs = base_queryset.filter(stock__gt=0).order_by('-created_at') # Orden aleatorio o por '-created_at', etc.
+        # Usamos el queryset base pero garantizamos que sean activos, no servicios y precio >= 25000
+        base_queryset = self.get_queryset().filter(is_active=True, is_service=False, sale_price__gte=25000)
+        new_qs = base_queryset.filter(stock__gt=0).order_by('-created_at')
         limit_str = request.query_params.get('limit', None)
         if limit_str and limit_str.isdigit():
             limit = int(limit_str)
-            featured_qs = featured_qs[:limit] # Aplicar el límite
+            new_qs = new_qs[:limit] # Aplicar el límite
 
-        page = self.paginate_queryset(featured_qs)
+        page = self.paginate_queryset(new_qs)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
             return self.get_paginated_response(serializer.data)
 
-        serializer = self.get_serializer(featured_qs, many=True)
+        serializer = self.get_serializer(new_qs, many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'], url_path='bestsellers')
@@ -152,9 +152,11 @@ class ProductViewSet(viewsets.ModelViewSet):
         if not ordered_product_ids:
             return Response([])
 
-        # 3. Obtener los objetos Product, preservando el orden de más vendido a menos vendido
+        # 3. Obtener los objetos Product respetando los filtros (activos, no servicios, >= 25000)
+        base_queryset = self.get_queryset().filter(is_active=True, is_service=False, sale_price__gte=25000)
+        
         preserved_order = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(ordered_product_ids)])
-        bestsellers_qs = Product.objects.filter(pk__in=ordered_product_ids).order_by(preserved_order)
+        bestsellers_qs = base_queryset.filter(pk__in=ordered_product_ids).order_by(preserved_order)
 
         # Aplicar el límite si se proporciona
         limit_str = request.query_params.get('limit', None)
