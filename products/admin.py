@@ -64,7 +64,7 @@ class ProductImageInline(admin.TabularInline):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ('id','name', 'category', 'subcategory', 'is_active', 'is_service', 'pp_display', 'final_price', 'stock', 'discount', 'is_featured')
+    list_display = ('id','name', 'category', 'subcategory', 'is_active', 'is_service', 'pp_display', 'average_cost', 'final_price', 'stock', 'discount', 'is_featured')
     list_filter = ('is_active', 'is_service', 'category', 'subcategory', 'tags', 'is_featured')
     search_fields = ('name', 'description')
     list_editable = ('is_active', 'is_service', 'is_featured',)
@@ -79,7 +79,7 @@ class ProductAdmin(admin.ModelAdmin):
             'fields': ('category', 'subcategory', 'tags')
         }),
         ('Precios e Inventario', {
-            'fields': ('purchase_price', 'sale_price', 'final_price', 'stock', 'discount')
+            'fields': ('purchase_price', 'average_cost', 'sale_price', 'final_price', 'stock', 'discount')
         }),
         ('Configuración Adicional', {
             'fields': ('is_active', 'is_featured', 'is_service')

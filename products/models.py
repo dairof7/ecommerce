@@ -50,6 +50,7 @@ class Product(models.Model):
     description = models.TextField(blank=True, null=True)
     tags = models.ManyToManyField(Tag, blank=True)
     purchase_price = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    average_cost = models.DecimalField("Costo Promedio", max_digits=10, decimal_places=2, default=Decimal('0.00'))
     stock = models.PositiveIntegerField(default=0)
     is_featured = models.BooleanField("Destacado", default=False, db_index=True)
     is_active = models.BooleanField("Activo", default=True, db_index=True)

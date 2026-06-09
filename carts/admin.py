@@ -34,7 +34,7 @@ class CartAdmin(admin.ModelAdmin):
 class QuoteItemInline(admin.TabularInline):
     model = QuoteItem
     extra = 0
-    readonly_fields = ('product', 'quantity', 'price_at_quote', 'subtotal') # Los items de la cotización son de solo lectura
+    readonly_fields = ('product', 'quantity', 'price_at_quote', 'cost_at_quote', 'subtotal') # Los items de la cotización son de solo lectura
     can_delete = False
     def has_add_permission(self, request, obj=None):
         return False
@@ -254,12 +254,11 @@ class QuoteAdmin(admin.ModelAdmin):
         base_query = QuoteItem.objects.filter(
             quote__status__in=['paid', 'shipped'],
             quote__created_at__gte=start_datetime,
-            quote__created_at__lte=end_datetime,
-            product__purchase_price__isnull=False
+            quote__created_at__lte=end_datetime
         ).values('product__name').annotate(
             total_sold=Sum('quantity'),
             total_profit=Sum(
-                (F('price_at_quote') - F('product__purchase_price')) * F('quantity'),
+                (F('price_at_quote') - F('cost_at_quote')) * F('quantity'),
                 output_field=DecimalField()
             )
         )
@@ -292,7 +291,7 @@ class QuoteAdmin(admin.ModelAdmin):
         cost_subquery = QuoteItem.objects.filter(
             quote=OuterRef('pk')
         ).values('quote').annotate(
-            total_cost=Sum(F('quantity') * Coalesce(F('product__purchase_price'), Decimal('0.0')), output_field=DecimalField())
+            total_cost=Sum(F('quantity') * F('cost_at_quote'), output_field=DecimalField())
         ).values('total_cost')
 
         sales_in_range = Quote.objects.filter(
@@ -412,7 +411,7 @@ class CartItemAdmin(admin.ModelAdmin):
 # Registrar QuoteItem (aunque se verá principalmente como inline en Quote)
 @admin.register(QuoteItem)
 class QuoteItemAdmin(admin.ModelAdmin):
-    list_display = ('id','quote', 'product', 'quantity', 'price_at_quote', 'subtotal')
+    list_display = ('id','quote', 'product', 'quantity', 'price_at_quote', 'cost_at_quote', 'subtotal')
     list_filter = ('quote__user', 'product', 'quote__status') # Filtrar por usuario de la cotización, producto y estado de la cotización
     search_fields = ('quote__user__username', 'product__name', 'quote__id')
-    readonly_fields = ('quote', 'product', 'quantity', 'price_at_quote', 'subtotal')
+    readonly_fields = ('quote', 'product', 'quantity', 'price_at_quote', 'cost_at_quote', 'subtotal')

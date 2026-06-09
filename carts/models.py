@@ -160,6 +160,7 @@ class QuoteItem(models.Model):
     product = models.ForeignKey(Product, on_delete=models.PROTECT) # Usar PROTECT para no eliminar productos si están en una cotización/venta
     quantity = models.PositiveIntegerField(default=1)
     price_at_quote = models.DecimalField(max_digits=10, decimal_places=2)
+    cost_at_quote = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
 
     @property
     def subtotal(self) -> Decimal:

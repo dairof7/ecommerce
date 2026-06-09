@@ -33,7 +33,7 @@ services:
 
   worker:
     build: .
-    command: celery -A tu_nombre_proyecto worker -l info
+    command: celery -A ecommerce worker -l info
     volumes:
       - .:/app
     env_file: .env
@@ -43,7 +43,7 @@ services:
 
   beat:
     build: .
-    command: celery -A tu_nombre_proyecto beat -l info
+    command: celery -A ecommerce beat -l info
     volumes:
       - .:/app
     env_file: .env

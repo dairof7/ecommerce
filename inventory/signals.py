@@ -3,6 +3,7 @@ from django.dispatch import receiver
 from django.db import transaction
 from .models import StockEntry
 from products.models import Product
+from decimal import Decimal
 
 @receiver(post_save, sender=StockEntry)
 def update_product_stock_on_stock_entry_save(sender, instance, created, **kwargs):
@@ -12,6 +13,21 @@ def update_product_stock_on_stock_entry_save(sender, instance, created, **kwargs
     if created: # Solo actuar si la StockEntry es nueva
         with transaction.atomic():
             product_to_update = Product.objects.select_for_update().get(pk=instance.product.pk)
+            
+            old_stock = Decimal(product_to_update.stock)
+            old_average = product_to_update.average_cost
+            new_quantity = Decimal(instance.quantity)
+            new_price = instance.purchase_price
+            
+            total_new_stock = old_stock + new_quantity
+            
+            if total_new_stock > 0:
+                new_average = ((old_stock * old_average) + (new_quantity * new_price)) / total_new_stock
+                product_to_update.average_cost = new_average
+            
+            # Actualizamos purchase_price como el "último" precio de compra
+            product_to_update.purchase_price = new_price
+            
             product_to_update.stock += instance.quantity
             product_to_update.save()
 

@@ -360,7 +360,8 @@ class CartViewSet(viewsets.ModelViewSet):
                 quote_items_to_create = []
                 for item in cart.items.all():
                     price_at_quote = item.product.final_sale_price
-                    quote_items_to_create.append(QuoteItem(quote=quote, product=item.product, quantity=item.quantity, price_at_quote=price_at_quote))
+                    cost_at_quote = item.product.average_cost
+                    quote_items_to_create.append(QuoteItem(quote=quote, product=item.product, quantity=item.quantity, price_at_quote=price_at_quote, cost_at_quote=cost_at_quote))
                 
                 QuoteItem.objects.bulk_create(quote_items_to_create)
                 
