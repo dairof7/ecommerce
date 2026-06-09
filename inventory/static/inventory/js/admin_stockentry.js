@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         var productSelect = $('#id_product');
         var priceInput = $('#id_purchase_price');
+        var salePriceInput = $('#id_update_sale_price');
         
         productSelect.on('change', function() {
             var productId = $(this).val();
@@ -19,8 +20,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     url: url,
                     type: 'GET',
                     success: function(response) {
-                        if (response.purchase_price !== undefined) {
+                        if (response.purchase_price !== undefined && response.purchase_price !== "") {
                             priceInput.val(response.purchase_price);
+                        }
+                        if (response.sale_price !== undefined && response.sale_price !== "") {
+                            salePriceInput.val(response.sale_price);
                         }
                     },
                     error: function(error) {

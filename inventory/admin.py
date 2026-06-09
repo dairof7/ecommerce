@@ -1,11 +1,26 @@
 from django.contrib import admin
+from django import forms
 from django.urls import path
 from django.http import JsonResponse
 from .models import StockEntry
 from products.models import Product
 
+class StockEntryAdminForm(forms.ModelForm):
+    update_sale_price = forms.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        required=False,
+        label="Precio de Venta",
+        help_text="Opcional. Puedes actualizar el precio de venta actual del producto desde aquí."
+    )
+
+    class Meta:
+        model = StockEntry
+        fields = '__all__'
+
 @admin.register(StockEntry)
 class StockEntryAdmin(admin.ModelAdmin):
+    form = StockEntryAdminForm
     list_display = ('product', 'quantity', 'purchase_price', 'date')
     list_filter = ('product', 'date')
     search_fields = ('product__name',)
@@ -15,7 +30,7 @@ class StockEntryAdmin(admin.ModelAdmin):
 
     fieldsets = (
         (None, {
-            'fields': ('product', 'quantity', 'purchase_price')
+            'fields': ('product', 'quantity', 'purchase_price', 'update_sale_price')
         }),
         ('Información Adicional', {
             'fields': ('notes',)
@@ -34,10 +49,19 @@ class StockEntryAdmin(admin.ModelAdmin):
         ]
         return custom_urls + urls
 
+    def save_model(self, request, obj, form, change):
+        # Actualizamos el precio de venta si se proporcionó un valor
+        update_sale_price = form.cleaned_data.get('update_sale_price')
+        if update_sale_price is not None:
+            obj.product.sale_price = update_sale_price
+            obj.product.save(update_fields=['sale_price'])
+        super().save_model(request, obj, form, change)
+
     def get_product_price(self, request, product_id):
         try:
             product = Product.objects.get(pk=product_id)
-            price = str(product.purchase_price) if product.purchase_price is not None else ""
-            return JsonResponse({'purchase_price': price})
+            purchase_price = str(product.purchase_price) if product.purchase_price is not None else ""
+            sale_price = str(product.sale_price) if product.sale_price is not None else ""
+            return JsonResponse({'purchase_price': purchase_price, 'sale_price': sale_price})
         except Product.DoesNotExist:
             return JsonResponse({'error': 'Product not found'}, status=404)
