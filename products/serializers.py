@@ -8,11 +8,16 @@ from .models import Category, Subcategory, Product, ProductImage, Tag
 
 class CategorySerializer(serializers.ModelSerializer):
     image = serializers.ImageField(read_only=True)
+    name = serializers.SerializerMethodField()
+    
     # Si se requiere permitir la subida de imágenes a través de la API:
     # image_upload = serializers.ImageField(source='image', write_only=True, required=False)
     class Meta:
         model = Category
         fields = ['id', 'name', 'image', 'description', 'is_active'] # Añadir image y description
+        
+    def get_name(self, obj):
+        return obj.name.title() if obj.name else ""
         # Si se usa image_upload:
         # fields = ['id', 'name', 'image', 'description', 'image_upload']
         # fields = '__all__'
@@ -20,9 +25,14 @@ class CategorySerializer(serializers.ModelSerializer):
 class SubcategorySerializer(serializers.ModelSerializer):
     image = serializers.ImageField(read_only=True)
     category_id = serializers.PrimaryKeyRelatedField(read_only=True, source='category.id')
+    name = serializers.SerializerMethodField()
+    
     class Meta:
         model = Subcategory
         fields = ['id', 'name', 'image', 'description', 'category_id', 'is_active']
+        
+    def get_name(self, obj):
+        return obj.name.title() if obj.name else ""
         # fields = '__all__'
 
 class TagSerializer(serializers.ModelSerializer):

@@ -20,6 +20,11 @@ class Category(models.Model):
     def __str__(self):
         return self.name
 
+    def save(self, *args, **kwargs):
+        if self.name:
+            self.name = self.name.upper()
+        super().save(*args, **kwargs)
+
 class Subcategory(models.Model):
     category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='subcategories')
     name = models.CharField(max_length=100)
@@ -36,6 +41,11 @@ class Subcategory(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        if self.name:
+            self.name = self.name.upper()
+        super().save(*args, **kwargs)
 
 class Tag(models.Model):
     name = models.CharField(max_length=50)
@@ -54,6 +64,11 @@ class Supplier(models.Model):
     def __str__(self):
         return self.name
 
+    def save(self, *args, **kwargs):
+        if self.name:
+            self.name = self.name.upper()
+        super().save(*args, **kwargs)
+
 class Brand(models.Model):
     name = models.CharField(max_length=100, unique=True)
     
@@ -64,6 +79,11 @@ class Brand(models.Model):
         
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        if self.name:
+            self.name = self.name.upper()
+        super().save(*args, **kwargs)
 
 class Product(models.Model):
     name = models.CharField(max_length=200)
