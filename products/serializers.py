@@ -58,6 +58,8 @@ class ProductSerializer(serializers.ModelSerializer):
     discount_amount_saved = serializers.SerializerMethodField()
     has_discount = serializers.SerializerMethodField()
 
+    brand_name = serializers.CharField(source='brand.name', read_only=True)
+
 
 
     # Campos para la entrada (write-only o para creación/actualización)
@@ -91,9 +93,10 @@ class ProductSerializer(serializers.ModelSerializer):
             'is_featured',
             'created_at', 'updated_at',
             'category', 'subcategory', 'images', 'tags',
+            'brand_name',
             'category_id', 'subcategory_id', 'tag_ids'
         ]
-        read_only_fields = ('stock', 'created_at', 'updated_at')
+        read_only_fields = ('stock', 'created_at', 'updated_at', 'brand_name')
 
     def get_applied_discount_percentage(self, obj) -> Decimal:
         # Esta lógica debe ser consistente con cómo se calcula final_sale_price en el modelo

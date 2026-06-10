@@ -1,5 +1,5 @@
 {% extends "admin/base.html" %}
-{% load i18n %}
+{% load i18n exchange_tags %}
 
 {% block title %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
 
@@ -9,6 +9,7 @@
 
 {% block userlinks %}
     <a href="{% url 'admin:carts_quote_pos' %}" style="color: #28a745; font-weight: bold; margin-right: 15px; border: 1px solid #28a745; padding: 2px 8px; border-radius: 4px; background: white;">POS (Punto de Venta)</a>
+    <span style="margin-right: 15px; font-weight: bold; color: #17a2b8;" title="Tasa Dólar Actualizada">💵 USD a COP: ${% current_exchange_rate %}</span>
     <a href="{% url 'admin:carts_quote_sales_dashboard' %}" style="margin-right: 15px; font-weight: bold;">📊 Reportes</a>
     {{ block.super }}
 {% endblock %}

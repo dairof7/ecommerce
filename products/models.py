@@ -43,19 +43,49 @@ class Tag(models.Model):
     def __str__(self):
         return self.name
 
+class Supplier(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    
+    class Meta:
+        verbose_name = "Proveedor"
+        verbose_name_plural = "Proveedores"
+        ordering = ['name']
+        
+    def __str__(self):
+        return self.name
+
+class Brand(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    
+    class Meta:
+        verbose_name = "Marca"
+        verbose_name_plural = "Marcas"
+        ordering = ['name']
+        
+    def __str__(self):
+        return self.name
+
 class Product(models.Model):
     name = models.CharField(max_length=200)
     category = models.ForeignKey(Category, on_delete=models.PROTECT)
     subcategory = models.ForeignKey(Subcategory, on_delete=models.PROTECT)
+    brand = models.ForeignKey(Brand, on_delete=models.SET_NULL, null=True, blank=True, related_name='products')
+    supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True, related_name='products')
     description = models.TextField(blank=True, null=True)
     tags = models.ManyToManyField(Tag, blank=True)
     purchase_price = models.DecimalField(max_digits=10, decimal_places=2, null=True)
     average_cost = models.DecimalField("Costo Promedio", max_digits=10, decimal_places=2, default=Decimal('0.00'))
     stock = models.PositiveIntegerField(default=0)
+    incoming_stock = models.IntegerField("Stock en Tránsito", default=0, help_text="Stock comprado que aún no ha llegado a bodega.")
     is_featured = models.BooleanField("Destacado", default=False, db_index=True)
     is_active = models.BooleanField("Activo", default=True, db_index=True)
     is_service = models.BooleanField("Es un Servicio", default=False, help_text="Marcar si esto es un servicio y no un producto físico. No será visible para clientes en la tienda.")
     sale_price = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+    
+    # Costos de Referencia (Administrativos)
+    reference_usd_cost = models.DecimalField("Costo USD (Referencia)", max_digits=10, decimal_places=2, null=True, blank=True, help_text="Costo en dólares. Solo para uso interno.")
+    reference_cop_cost = models.DecimalField("Costo COP (Referencia)", max_digits=12, decimal_places=2, null=True, blank=True, help_text="Costo en pesos colombianos. Se calcula automáticamente o se puede editar manual.")
+    
     # Este 'discount' es el descuento base/individual del producto
     discount = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'))
     created_at = models.DateTimeField(auto_now_add=True)
@@ -146,3 +176,12 @@ class ProductImage(models.Model):
 
     def __str__(self):
         return f"Image for {self.product.name}"
+
+class ProductPricing(Product):
+    """
+    Modelo Proxy para tener una vista de administración especializada en precios e inventario
+    """
+    class Meta:
+        proxy = True
+        verbose_name = "Gestión de Precios y Stock"
+        verbose_name_plural = "Gestión de Precios y Stock"

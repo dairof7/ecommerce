@@ -68,6 +68,15 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'America/Bogota' # Ajusta a tu zona horaria
 
+from celery.schedules import crontab
+
+CELERY_BEAT_SCHEDULE = {
+    'update-usd-cop-daily': {
+        'task': 'products.tasks.update_cop_costs_from_usd',
+        'schedule': crontab(hour=2, minute=0), # Ejecutar todos los días a las 2:00 AM
+    },
+}
+
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
