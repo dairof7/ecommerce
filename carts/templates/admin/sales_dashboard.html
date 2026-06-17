@@ -64,6 +64,36 @@
   </form>
 </div>
 
+<div class="dashboard-grid" style="margin-bottom: 2rem;">
+  <div class="table-container" style="background: #eef5f9; border-color: #b8d4e3; grid-column: 1 / -1;">
+    <h2 style="color: #417690; border-bottom-color: #b8d4e3; margin-bottom: 0;">Valoración Actual del Inventario Físico <span style="font-size: 0.85em; font-weight: normal; color: #666;">(Excluye combos y servicios)</span></h2>
+    <div style="display: flex; justify-content: space-around; text-align: center; padding: 1rem 0; flex-wrap: wrap; gap: 1rem;">
+      <div>
+        <p style="margin: 0 0 5px 0; color: #666; font-size: 0.95rem; font-weight: 600;">Costo Total del Stock</p>
+        <p style="margin: 0; font-size: 2rem; font-weight: bold; color: #d9534f;">${{ total_stock_cost|floatformat:0 }}</p>
+      </div>
+      <div>
+        <p style="margin: 0 0 5px 0; color: #666; font-size: 0.95rem; font-weight: 600;">Ganancia Potencial Total</p>
+        <p style="margin: 0; font-size: 2rem; font-weight: bold; color: #5cb85c;">${{ total_stock_profit|floatformat:0 }}</p>
+      </div>
+      <div>
+        <p style="margin: 0 0 5px 0; color: #666; font-size: 0.95rem; font-weight: 600;">Valor Total de Venta</p>
+        <p style="margin: 0; font-size: 2rem; font-weight: bold; color: #0275d8;">${{ total_stock_sale|floatformat:0 }}</p>
+      </div>
+    </div>
+    <div style="display: flex; justify-content: space-around; text-align: center; padding-top: 1rem; border-top: 1px solid #d0e3ef;">
+      <div title="El porcentaje de ganancia bruta sobre el total del valor de venta del inventario.">
+        <p style="margin: 0 0 5px 0; color: #555; font-size: 0.85rem; font-weight: bold;">Margen Bruto Global</p>
+        <p style="margin: 0; font-size: 1.5rem; font-weight: bold; color: #333;">{{ global_margin_percentage|floatformat:1 }}%</p>
+      </div>
+      <div title="Gross Margin Return on Investment: Cuánto retorna cada peso invertido en inventario físico.">
+        <p style="margin: 0 0 5px 0; color: #555; font-size: 0.85rem; font-weight: bold;">GMROI (Retorno Inversión)</p>
+        <p style="margin: 0; font-size: 1.5rem; font-weight: bold; color: #333;">{{ gmroi|floatformat:2 }}x</p>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="dashboard-grid">
   <div class="table-container">
     <h2>Más Vendidos (Período Seleccionado)</h2>

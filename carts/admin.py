@@ -250,6 +250,30 @@ class QuoteAdmin(admin.ModelAdmin):
         start_datetime = timezone.make_aware(datetime.combine(start_date, datetime.min.time()))
         end_datetime = timezone.make_aware(datetime.combine(end_date, datetime.max.time()))
 
+        # 0. Reporte de Valoración de Inventario (Stock actual)
+        stock_valuation = Product.objects.filter(
+            is_active=True,
+            is_service=False,
+            is_combo=False,
+            stock__gt=0
+        ).aggregate(
+            total_cost=Sum(F('stock') * F('average_cost'), output_field=DecimalField()),
+            total_sale_value=Sum(F('stock') * F('sale_price'), output_field=DecimalField())
+        )
+        
+        total_stock_cost = stock_valuation['total_cost'] or Decimal('0.00')
+        total_stock_sale = stock_valuation['total_sale_value'] or Decimal('0.00')
+        total_stock_profit = total_stock_sale - total_stock_cost
+
+        # Cálculos de indicadores globales de inventario
+        global_margin_percentage = Decimal('0.00')
+        if total_stock_sale > 0:
+            global_margin_percentage = (total_stock_profit / total_stock_sale) * Decimal('100.00')
+
+        gmroi = Decimal('0.00')
+        if total_stock_cost > 0:
+            gmroi = total_stock_profit / total_stock_cost
+
         # 1. Top N Best-Selling & Most Profitable Products
         base_query = QuoteItem.objects.filter(
             quote__status__in=['paid', 'shipped'],
@@ -369,6 +393,11 @@ class QuoteAdmin(admin.ModelAdmin):
         context = dict(
            self.admin_site.each_context(request),
            title="Dashboard de Ventas",
+           total_stock_cost=total_stock_cost,
+           total_stock_sale=total_stock_sale,
+           total_stock_profit=total_stock_profit,
+           global_margin_percentage=global_margin_percentage,
+           gmroi=gmroi,
            top_selling_products=list(top_selling_products),
            top_profit_products=list(top_profit_products),
            sales_chart_data=sales_chart_data,

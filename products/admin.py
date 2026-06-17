@@ -82,10 +82,10 @@ class ProductImageInline(admin.TabularInline):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ('id','name', 'category', 'subcategory', 'brand', 'is_active', 'is_service', 'pp_display', 'reference_usd_cost', 'reference_cop_cost', 'final_price', 'stock', 'discount', 'is_featured')
-    list_filter = ('is_active', 'is_service', ('category', DropdownFilter), ('subcategory', DropdownFilter), ('brand', DropdownFilter), ('supplier', DropdownFilter), ('tags', DropdownFilter), 'is_featured')
+    list_display = ('id','name', 'category', 'subcategory', 'brand', 'is_active', 'is_service', 'is_combo', 'pp_display', 'reference_usd_cost', 'reference_cop_cost', 'final_price', 'stock', 'discount', 'is_featured')
+    list_filter = ('is_active', 'is_service', 'is_combo', ('category', DropdownFilter), ('subcategory', DropdownFilter), ('brand', DropdownFilter), ('supplier', DropdownFilter), ('tags', DropdownFilter), 'is_featured')
     search_fields = ('name', 'description')
-    list_editable = ('is_active', 'is_service', 'is_featured',)
+    list_editable = ('is_active', 'is_service', 'is_combo', 'is_featured',)
     inlines = [ProductImageInline]
     filter_horizontal = ('tags',)  # Para una mejor interfaz de selección de tags
     readonly_fields = ('final_price',)
@@ -104,7 +104,7 @@ class ProductAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
         ('Configuración Adicional', {
-            'fields': ('is_active', 'is_featured', 'is_service')
+            'fields': ('is_active', 'is_featured', 'is_service', 'is_combo')
         })
     )
     
