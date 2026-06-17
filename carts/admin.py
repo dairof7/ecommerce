@@ -265,6 +265,17 @@ class QuoteAdmin(admin.ModelAdmin):
         total_stock_sale = stock_valuation['total_sale_value'] or Decimal('0.00')
         total_stock_profit = total_stock_sale - total_stock_cost
 
+        # Valoración de Stock en Tránsito
+        transit_valuation = Product.objects.filter(
+            is_active=True,
+            is_service=False,
+            is_combo=False,
+            incoming_stock__gt=0
+        ).aggregate(
+            total_transit_cost=Sum(F('incoming_stock') * F('average_cost'), output_field=DecimalField())
+        )
+        total_transit_cost = transit_valuation['total_transit_cost'] or Decimal('0.00')
+
         # Cálculos de indicadores globales de inventario
         global_margin_percentage = Decimal('0.00')
         if total_stock_sale > 0:
@@ -396,6 +407,7 @@ class QuoteAdmin(admin.ModelAdmin):
            total_stock_cost=total_stock_cost,
            total_stock_sale=total_stock_sale,
            total_stock_profit=total_stock_profit,
+           total_transit_cost=total_transit_cost,
            global_margin_percentage=global_margin_percentage,
            gmroi=gmroi,
            top_selling_products=list(top_selling_products),

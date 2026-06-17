@@ -73,6 +73,10 @@
         <p style="margin: 0; font-size: 2rem; font-weight: bold; color: #d9534f;">${{ total_stock_cost|floatformat:0 }}</p>
       </div>
       <div>
+        <p style="margin: 0 0 5px 0; color: #666; font-size: 0.95rem; font-weight: 600;" title="Mercancía comprada que aún no llega a bodega">Costo Stock en Tránsito</p>
+        <p style="margin: 0; font-size: 2rem; font-weight: bold; color: #f0ad4e;">${{ total_transit_cost|floatformat:0 }}</p>
+      </div>
+      <div>
         <p style="margin: 0 0 5px 0; color: #666; font-size: 0.95rem; font-weight: 600;">Ganancia Potencial Total</p>
         <p style="margin: 0; font-size: 2rem; font-weight: bold; color: #5cb85c;">${{ total_stock_profit|floatformat:0 }}</p>
       </div>
