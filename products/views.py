@@ -1,6 +1,6 @@
 from rest_framework import viewsets, generics, filters, permissions
-from .models import Category, Subcategory, Product, ProductImage, Tag
-from .serializers import CategorySerializer, SubcategorySerializer, ProductSerializer, ProductImageSerializer, TagSerializer, RelevantTagSerializer
+from .models import Category, Subcategory, Product, ProductImage, Tag, Brand
+from .serializers import CategorySerializer, SubcategorySerializer, ProductSerializer, ProductImageSerializer, TagSerializer, RelevantTagSerializer, RelevantBrandSerializer
 from django_filters.rest_framework import DjangoFilterBackend
 from .filters import ProductFilter
 from django.db.models import Count, Q, Sum
@@ -115,8 +115,15 @@ class ProductViewSet(viewsets.ModelViewSet):
         """
         Retorna una lista de productos nuevos.
         """
-        # Usamos el queryset base pero garantizamos que sean activos, no servicios y precio >= 25000
-        base_queryset = self.get_queryset().filter(is_active=True, is_service=False, sale_price__gte=25000)
+        # Usamos el queryset base pero garantizamos que sean activos y no servicios.
+        # Excluimos subcategorías de consumibles/accesorios en lugar de filtrar por precio.
+        excluded_subcats = ["ACCESORIOS-REPUESTOS CAMARAS", "ACCESORIOS COMPUTACIÓN", "MEMORIA USB", "MICRO SD"]
+        base_queryset = self.get_queryset().filter(
+            is_active=True, 
+            is_service=False
+        ).exclude(
+            subcategory__name__in=excluded_subcats
+        )
         new_qs = base_queryset.filter(stock__gt=0).order_by('-created_at')
         limit_str = request.query_params.get('limit', None)
         if limit_str and limit_str.isdigit():
@@ -152,8 +159,15 @@ class ProductViewSet(viewsets.ModelViewSet):
         if not ordered_product_ids:
             return Response([])
 
-        # 3. Obtener los objetos Product respetando los filtros (activos, no servicios, >= 25000)
-        base_queryset = self.get_queryset().filter(is_active=True, is_service=False, sale_price__gte=25000)
+        # 3. Obtener los objetos Product respetando los filtros (activos, no servicios)
+        # y excluyendo las subcategorías de repuestos/consumibles para dar espacio a productos reales de bajo costo.
+        excluded_subcats = ["ACCESORIOS-REPUESTOS CAMARAS", "ACCESORIOS COMPUTACIÓN", "MEMORIA USB", "MICRO SD"]
+        base_queryset = self.get_queryset().filter(
+            is_active=True, 
+            is_service=False
+        ).exclude(
+            subcategory__name__in=excluded_subcats
+        )
         
         preserved_order = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(ordered_product_ids)])
         bestsellers_qs = base_queryset.filter(pk__in=ordered_product_ids).order_by(preserved_order)
@@ -239,6 +253,33 @@ class RelevantTagsView(views.APIView):
 
         # Serializar los resultados
         serializer = RelevantTagSerializer(relevant_tags_qs, many=True)
+        return response.Response(serializer.data)
+
+
+class RelevantBrandsView(views.APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, *args, **kwargs):
+        product_queryset = Product.objects.all()
+        
+        filtering_params = request.query_params.copy()
+        filtering_params.pop('brand', None)
+        filtering_params.pop('brands', None)
+        
+        product_filter = ProductFilter(data=filtering_params, queryset=product_queryset, request=request)
+        filtered_products_qs = product_filter.qs
+        
+        relevant_brands_qs = Brand.objects.filter(
+            products__in=filtered_products_qs 
+        ).exclude(
+            name__iexact='GENERICO'
+        ).annotate(
+            product_count=Count('products', filter=Q(products__in=filtered_products_qs))
+        ).filter(
+            product_count__gt=0
+        ).order_by('-product_count', 'name').distinct()
+
+        serializer = RelevantBrandSerializer(relevant_brands_qs, many=True)
         return response.Response(serializer.data)
 
 # Opcional: Si prefieres un ViewSet para consistencia (aunque solo tenga 'list')

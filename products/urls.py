@@ -11,5 +11,6 @@ router.register(r'', views.ProductViewSet, basename='product')
 
 urlpatterns = [
     path('relevant-tags/', views.RelevantTagsView.as_view(), name='relevant-tags-list'),
+    path('relevant-brands/', views.RelevantBrandsView.as_view(), name='relevant-brands-list'),
     path('', include(router.urls)),
 ]

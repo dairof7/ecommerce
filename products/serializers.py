@@ -1,6 +1,6 @@
 from decimal import Decimal
 from rest_framework import serializers
-from .models import Category, Subcategory, Product, ProductImage, Tag
+from .models import Category, Subcategory, Product, ProductImage, Tag, Brand
 
 
 
@@ -46,6 +46,13 @@ class RelevantTagSerializer(TagSerializer): # Hereda de TagSerializer
 
     class Meta(TagSerializer.Meta): # Hereda Meta de TagSerializer
         fields = TagSerializer.Meta.fields + ['product_count']
+
+class RelevantBrandSerializer(serializers.ModelSerializer):
+    product_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Brand
+        fields = ['id', 'name', 'product_count']
 
 class ProductImageSerializer(serializers.ModelSerializer):
     class Meta:

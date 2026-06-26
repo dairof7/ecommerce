@@ -1,6 +1,6 @@
 # products/filters.py
 import django_filters
-from .models import Product, Tag
+from .models import Product, Tag, Brand
 
 class ProductFilter(django_filters.FilterSet):
     # Filtro por nombre de producto (búsqueda 'icontains')
@@ -10,6 +10,14 @@ class ProductFilter(django_filters.FilterSet):
 
     # Filtro por subcategoría (usa el ID)
     subcategory = django_filters.NumberFilter(field_name='subcategory__id') # O ModelChoiceFilter
+
+    # Filtro por Marca (usa el ID, permite múltiples marcas con OR lógicamente)
+    brand = django_filters.ModelMultipleChoiceFilter(
+        field_name='brand__id',
+        to_field_name='id',
+        queryset=Brand.objects.all(),
+        conjoined=False, # OR lógico
+    )
 
     # Filtro por Tags (acepta múltiples IDs de tags, busca productos que tengan TODOS los tags especificados)
     # Este es el comportamiento por defecto de ManyToManyField con filterset_fields
