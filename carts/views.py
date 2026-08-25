@@ -390,6 +390,9 @@ class QuoteViewSet(viewsets.ModelViewSet):
         'user__username', # Buscar por username del cliente
         'user__email', # Buscar por email del cliente
         'user__profile__document', # Buscar por documento del cliente (si tienes perfil)
+        'customer_name', # Buscar por nombre del cliente
+        'customer_email', # Buscar por email del cliente
+        'customer_document', # Buscar por documento del cliente
     ]
     
     # Campos por los que el admin podrá filtrar con valores exactos (ej. ?status=pending)

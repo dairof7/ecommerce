@@ -41,7 +41,7 @@ class TagViewSet(viewsets.ModelViewSet):
 class ProductViewSet(viewsets.ModelViewSet):
     serializer_class = ProductSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter, DjangoFilterBackend]
-    search_fields = ['name', 'description', 'category__name', 'subcategory__name', 'tags__name']
+    search_fields = ['name', 'description', 'category__name', 'subcategory__name', 'tags__name', 'brand__name']
     ordering_fields = ['name', 'sale_price', 'created_at']
     # con este busco por el nombre de la categoría y subcategoría
     filterset_class = ProductFilter
@@ -117,10 +117,11 @@ class ProductViewSet(viewsets.ModelViewSet):
         """
         # Usamos el queryset base pero garantizamos que sean activos y no servicios.
         # Excluimos subcategorías de consumibles/accesorios en lugar de filtrar por precio.
-        excluded_subcats = ["ACCESORIOS-REPUESTOS CAMARAS", "ACCESORIOS COMPUTACIÓN", "MEMORIA USB", "MICRO SD"]
+        excluded_subcats = ["ACCESORIOS CAMARAS", "ACCESORIOS COMPUTACIÓN", "MEMORIA USB", "MICRO SD"]
         base_queryset = self.get_queryset().filter(
             is_active=True, 
-            is_service=False
+            is_service=False,
+            sale_price__gt=45000
         ).exclude(
             subcategory__name__in=excluded_subcats
         )
@@ -161,10 +162,11 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         # 3. Obtener los objetos Product respetando los filtros (activos, no servicios)
         # y excluyendo las subcategorías de repuestos/consumibles para dar espacio a productos reales de bajo costo.
-        excluded_subcats = ["ACCESORIOS-REPUESTOS CAMARAS", "ACCESORIOS COMPUTACIÓN", "MEMORIA USB", "MICRO SD"]
+        excluded_subcats = ["ACCESORIOS CAMARAS", "ACCESORIOS COMPUTACIÓN", "MEMORIA USB", "MICRO SD"]
         base_queryset = self.get_queryset().filter(
             is_active=True, 
-            is_service=False
+            is_service=False,
+            sale_price__gt=45000,
         ).exclude(
             subcategory__name__in=excluded_subcats
         )
