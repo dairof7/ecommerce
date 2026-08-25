@@ -1,0 +1,45 @@
+{% extends "admin/base_site.html" %}
+{% load i18n l10n %}
+
+{% block content %}
+<form action="" method="post">
+    {% csrf_token %}
+    <div>
+        <p>Por favor, confirma la cantidad de stock que estás recibiendo para cada producto. Por defecto, se muestra la cantidad total en tránsito.</p>
+        
+        <table style="width: 100%; text-align: left; border-collapse: collapse; margin-bottom: 20px;">
+            <thead>
+                <tr>
+                    <th style="padding: 8px; border-bottom: 1px solid #ccc;">Producto</th>
+                    <th style="padding: 8px; border-bottom: 1px solid #ccc;">Stock Bodega</th>
+                    <th style="padding: 8px; border-bottom: 1px solid #ccc;">Pendiente (En Tránsito)</th>
+                    <th style="padding: 8px; border-bottom: 1px solid #ccc;">Cantidad a Recibir Ahora</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for obj in queryset %}
+                <tr>
+                    <td style="padding: 8px; border-bottom: 1px solid #eee;">{{ obj.name }}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #eee;">{{ obj.stock }}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #eee;">{{ obj.incoming_stock }}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #eee;">
+                        <input type="number" name="received_{{ obj.id }}" value="{{ obj.incoming_stock }}" min="0" max="{{ obj.incoming_stock }}" style="width: 100px; padding: 4px;" required>
+                    </td>
+                    <!-- Mantiene seleccionado el elemento -->
+                    <input type="hidden" name="{{ action_checkbox_name }}" value="{{ obj.pk|unlocalize }}" />
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- Campos ocultos necesarios -->
+        <input type="hidden" name="action" value="receive_incoming_stock" />
+        <input type="hidden" name="apply" value="1" />
+        
+        <div style="margin-top: 20px;">
+            <input type="submit" value="Confirmar Recepción" class="default" style="padding: 10px 15px; background: #79aec8; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;" />
+            <a href="javascript:history.back()" class="button" style="margin-left: 10px; padding: 10px 15px; text-decoration: none; border-radius: 4px; border: 1px solid #ccc; background-color: #f8f8f8; color: #333; display: inline-block;">Cancelar</a>
+        </div>
+    </div>
+</form>
+{% endblock %}

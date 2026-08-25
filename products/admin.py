@@ -1,5 +1,9 @@
 from django.contrib import admin
 from .models import Category, Subcategory, Product, ProductImage, Tag, Brand, Supplier, ProductPricing
+from django.db import models
+from django.forms import NumberInput
+from django.template.response import TemplateResponse
+from django.http import HttpResponseRedirect
 from django.utils.html import format_html
 from django.contrib import messages
 from django.contrib.admin import RelatedFieldListFilter
@@ -82,7 +86,7 @@ class ProductImageInline(admin.TabularInline):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ('id','name', 'category', 'subcategory', 'brand', 'is_active', 'is_service', 'is_combo', 'pp_display', 'reference_usd_cost', 'reference_cop_cost', 'final_price', 'stock', 'discount', 'is_featured')
+    list_display = ('id','name', 'brand', 'pp_display','sale_price','final_price', 'stock', 'discount', 'is_active', 'is_service', 'is_combo', 'is_featured', 'category', 'subcategory')
     list_filter = ('is_active', 'is_service', 'is_combo', ('category', DropdownFilter), ('subcategory', DropdownFilter), ('brand', DropdownFilter), ('supplier', DropdownFilter), ('tags', DropdownFilter), 'is_featured')
     search_fields = ('name', 'description')
     list_editable = ('is_active', 'is_service', 'is_combo', 'is_featured',)
@@ -154,22 +158,44 @@ class StockStatusFilter(admin.SimpleListFilter):
 
 @admin.register(ProductPricing)
 class ProductPricingAdmin(admin.ModelAdmin):
-    list_display = ('id', 'image_thumbnail', 'name', 'purchase_price', 'reference_usd_cost', 'reference_cop_cost', 'sale_price', 'stock', 'incoming_stock', 'is_active')
+    list_display = ('id', 'image_thumbnail', 'name', 'purchase_price',  'sale_price', 'discount', 'final_price', 'net_profit', 'profit_margin', 'stock', 'incoming_stock', 'is_active', 'reference_usd_cost', 'reference_cop_cost')
     list_display_links = ('id', 'name')
-    list_editable = ('purchase_price', 'reference_usd_cost', 'reference_cop_cost', 'sale_price', 'incoming_stock', 'is_active')
+    list_editable = ('purchase_price', 'reference_usd_cost', 'reference_cop_cost', 'sale_price', 'discount', 'incoming_stock', 'is_active')
     list_filter = ('is_active', StockStatusFilter, ('brand', DropdownFilter), ('supplier', DropdownFilter), ('category', DropdownFilter), ('subcategory', DropdownFilter), ('tags', DropdownFilter))
     search_fields = ('name',)
     list_per_page = 100
+    
+    formfield_overrides = {
+        models.DecimalField: {'widget': NumberInput(attrs={'style': 'width: 80px;'})},
+        models.IntegerField: {'widget': NumberInput(attrs={'style': 'width: 70px;'})},
+    }
     
     fieldsets = (
         (None, {
             'fields': ('name',)
         }),
         ('Precios e Inventario', {
-            'fields': ('purchase_price', 'reference_usd_cost', 'reference_cop_cost', 'sale_price', 'stock', 'incoming_stock')
+            'fields': ('purchase_price', 'reference_usd_cost', 'reference_cop_cost', 'sale_price', 'discount', 'final_price', 'net_profit', 'profit_margin', 'stock', 'incoming_stock')
         }),
     )
-    readonly_fields = ('name', 'stock')
+    readonly_fields = ('name', 'stock', 'final_price', 'net_profit', 'profit_margin')
+
+    def final_price(self, obj):
+        return obj.final_sale_price
+    final_price.short_description = 'PF (-disc)'
+
+    def net_profit(self, obj):
+        if obj.purchase_price is not None:
+            return obj.final_sale_price - obj.purchase_price
+        return "-"
+    net_profit.short_description = 'Ganancia ($)'
+
+    def profit_margin(self, obj):
+        if obj.purchase_price and obj.purchase_price > 0:
+            margin = ((obj.final_sale_price - obj.purchase_price) / obj.purchase_price) * 100
+            return f"{margin:.2f}%"
+        return "-"
+    profit_margin.short_description = 'Ganancia (%)'
 
     def image_thumbnail(self, obj):
         image = obj.images.first()
@@ -190,28 +216,46 @@ class ProductPricingAdmin(admin.ModelAdmin):
     
     def receive_incoming_stock(self, request, queryset):
         products_to_receive = queryset.filter(incoming_stock__gt=0)
-        count = 0
         
-        for product in products_to_receive:
-            quantity_to_receive = product.incoming_stock
-            
-            # 1. Poner a cero el stock en tránsito y guardar
-            product.incoming_stock = 0
-            product.save(update_fields=['incoming_stock'])
-            
-            # 2. Crear el StockEntry. Esto dispara el signal que suma el stock real
-            # y actualiza el costo promedio.
-            StockEntry.objects.create(
-                product=product,
-                quantity=quantity_to_receive,
-                purchase_price=product.purchase_price or Decimal('0.00'),
-                notes="Recepción automática de stock en tránsito desde Panel Rápido"
-            )
-            count += 1
-            
-        if count > 0:
-            self.message_user(request, f"Se recibió stock en tránsito para {count} productos. Los registros de inventario fueron creados automáticamente.", level=messages.SUCCESS)
-        else:
+        if not products_to_receive.exists():
             self.message_user(request, "No se seleccionó ningún producto con stock en tránsito pendiente.", level=messages.WARNING)
+            return
             
-    receive_incoming_stock.short_description = "Recibir Stock en Tránsito (Crea registro y suma a Bodega)"
+        if 'apply' in request.POST:
+            count = 0
+            for product in products_to_receive:
+                try:
+                    received_qty = int(request.POST.get(f'received_{product.id}', 0))
+                except (ValueError, TypeError):
+                    received_qty = 0
+                    
+                if received_qty > 0:
+                    if received_qty > product.incoming_stock:
+                        self.message_user(request, f"Error: {product.name} (Intentaste recibir {received_qty}, pero solo hay {product.incoming_stock} pendientes).", level=messages.ERROR)
+                        continue
+                        
+                    product.incoming_stock -= received_qty
+                    product.save(update_fields=['incoming_stock'])
+                    
+                    StockEntry.objects.create(
+                        product=product,
+                        quantity=received_qty,
+                        purchase_price=product.purchase_price or Decimal('0.00'),
+                        notes=f"Recepción de stock en tránsito desde Panel Rápido"
+                    )
+                    count += 1
+
+            if count > 0:
+                self.message_user(request, f"Se recibió stock para {count} productos.", level=messages.SUCCESS)
+            return HttpResponseRedirect(request.get_full_path())
+            
+        context = dict(
+            self.admin_site.each_context(request),
+            title="Confirmar Recepción de Stock en Tránsito",
+            queryset=products_to_receive,
+            action_checkbox_name=admin.helpers.ACTION_CHECKBOX_NAME,
+        )
+        
+        return TemplateResponse(request, 'admin/receive_stock_intermediate.html', context)
+        
+    receive_incoming_stock.short_description = "Recibir Stock en Tránsito (Permite recepción parcial)"
