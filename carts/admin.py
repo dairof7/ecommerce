@@ -159,6 +159,7 @@ class QuoteAdmin(admin.ModelAdmin):
                 output_field=DecimalField()
             )
         )['total_profit'] or Decimal('0.00')
+        ganancia = ganancia - (obj.coupon_discount or Decimal('0.00'))
         color = '#28a745' if ganancia > 0 else '#6c757d'
         formatted = f'${ganancia:,.0f}'
         return format_html(
