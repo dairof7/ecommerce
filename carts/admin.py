@@ -40,7 +40,7 @@ class QuoteItemInline(admin.TabularInline):
         return False
 @admin.register(Quote)
 class QuoteAdmin(admin.ModelAdmin):
-    list_display = ('id', 'user', 'customer_name', 'customer_email', 'status', 'total', 'created_at', 'receipt_actions', 'quote_actions')
+    list_display = ('id', 'user', 'customer_name', 'customer_email', 'status', 'total', 'profit', 'created_at', 'receipt_actions', 'quote_actions')
     list_filter = ('status', 'created_at', 'user')
     search_fields = ('user__username', 'customer_name', 'customer_email', 'coupon__code')
     readonly_fields = ('user', 'cart', 'created_at', 'updated_at', 'total', 'coupon_discount')
@@ -64,6 +64,7 @@ class QuoteAdmin(admin.ModelAdmin):
             path('<int:quote_id>/receipt/', self.admin_site.admin_view(self.view_receipt_pdf), name='view_receipt_pdf'),
             path('<int:quote_id>/mark-paid/', self.admin_site.admin_view(self.mark_quote_paid), name='quote_mark_paid'),
             path('<int:quote_id>/mark-shipped/', self.admin_site.admin_view(self.mark_quote_shipped), name='quote_mark_shipped'),
+            path('<int:quote_id>/confirm-backorder/', self.admin_site.admin_view(self.confirm_backorder_quote), name='quote_confirm_backorder'),
             path('<int:quote_id>/cancel/', self.admin_site.admin_view(self.cancel_quote), name='quote_cancel'),
         ]
         return custom_urls + urls
@@ -139,13 +140,34 @@ class QuoteAdmin(admin.ModelAdmin):
         actions = []
         if obj.status == 'pending':
             actions.append(f'<a class="button" style="background-color: #28a745; margin-right: 5px;" href="{reverse("admin:quote_mark_paid", args=[obj.id])}">Marcar Pagado</a>')
+            actions.append(f'<a class="button" style="background-color: #fd7e14; margin-right: 5px;" href="{reverse("admin:quote_confirm_backorder", args=[obj.id])}">Bajo Pedido</a>')
             actions.append(f'<a class="button" style="background-color: #dc3545;" href="{reverse("admin:quote_cancel", args=[obj.id])}">Cancelar</a>')
         elif obj.status == 'paid':
             actions.append(f'<a class="button" style="background-color: #007bff; margin-right: 5px;" href="{reverse("admin:quote_mark_shipped", args=[obj.id])}">Marcar Enviado</a>')
             actions.append(f'<a class="button" style="background-color: #dc3545;" href="{reverse("admin:quote_cancel", args=[obj.id])}">Cancelar</a>')
+        elif obj.status == 'backorder_paid':
+            actions.append(f'<a class="button" style="background-color: #007bff; margin-right: 5px;" href="{reverse("admin:quote_mark_shipped", args=[obj.id])}">Despachar (llega stock)</a>')
+            actions.append(f'<a class="button" style="background-color: #dc3545;" href="{reverse("admin:quote_cancel", args=[obj.id])}">Cancelar</a>')
         return format_html("".join(actions))
     quote_actions.short_description = 'Acciones Rápidas'
     quote_actions.allow_tags = True
+
+    def profit(self, obj):
+        ganancia = obj.items.aggregate(
+            total_profit=Sum(
+                (F('price_at_quote') - F('cost_at_quote')) * F('quantity'),
+                output_field=DecimalField()
+            )
+        )['total_profit'] or Decimal('0.00')
+        color = '#28a745' if ganancia > 0 else '#6c757d'
+        formatted = f'${ganancia:,.0f}'
+        return format_html(
+            '<span style="color: {}; font-weight: bold;">{}</span>',
+            color,
+            formatted
+        )
+    profit.short_description = 'Ganancia'
+    profit.admin_order_field = None
 
     def mark_quote_paid(self, request, quote_id):
         quote = self.get_object(request, str(quote_id))
@@ -173,15 +195,45 @@ class QuoteAdmin(admin.ModelAdmin):
 
     def mark_quote_shipped(self, request, quote_id):
         quote = self.get_object(request, str(quote_id))
-        if quote and quote.status == 'paid':
-            quote.status = 'shipped'
-            quote.save()
-            self.message_user(request, f"Cotización #{quote.id} marcada como Enviada.", messages.SUCCESS)
+        if quote and quote.status in ['paid', 'backorder_paid']:
+            try:
+                with transaction.atomic():
+                    if quote.status == 'backorder_paid':
+                        for item in quote.items.all():
+                            product = Product.objects.select_for_update().get(pk=item.product.pk)
+                            if product.stock < item.quantity:
+                                raise ValueError(f"Stock insuficiente para despachar '{product.name}'. Disponible: {product.stock}, Solicitado: {item.quantity}")
+                            product.stock -= item.quantity
+                            product.save()
+                    quote.status = 'shipped'
+                    quote.save()
+                    self.message_user(request, f"Cotización #{quote.id} marcada como Enviada.", messages.SUCCESS)
+            except ValueError as e:
+                self.message_user(request, str(e), messages.ERROR)
+            except Exception:
+                self.message_user(request, "Error inesperado al marcar como enviado.", messages.ERROR)
+        return redirect('admin:carts_quote_changelist')
+
+    def confirm_backorder_quote(self, request, quote_id):
+        """Confirma un pedido bajo pedido: no descuenta stock, manda email al cliente."""
+        from .tasks import send_backorder_email
+        quote = self.get_object(request, str(quote_id))
+        if quote and quote.status == 'pending':
+            try:
+                with transaction.atomic():
+                    if quote.coupon:
+                        Coupon.objects.filter(pk=quote.coupon.pk).update(uses_count=F('uses_count') + 1)
+                    quote.status = 'backorder_paid'
+                    quote.save()
+                send_backorder_email.delay(quote.id)
+                self.message_user(request, f"Pedido #{quote.id} confirmado como Bajo Pedido. Email enviado al cliente.", messages.SUCCESS)
+            except Exception as e:
+                self.message_user(request, f"Error al confirmar bajo pedido: {e}", messages.ERROR)
         return redirect('admin:carts_quote_changelist')
 
     def cancel_quote(self, request, quote_id):
         quote = self.get_object(request, str(quote_id))
-        if quote and quote.status in ['pending', 'paid']:
+        if quote and quote.status in ['pending', 'paid', 'backorder_paid']:
             previous_status = quote.status
             try:
                 with transaction.atomic():
@@ -193,11 +245,15 @@ class QuoteAdmin(admin.ModelAdmin):
                             product = Product.objects.select_for_update().get(pk=item.product.pk)
                             product.stock += item.quantity
                             product.save()
-                        
                         if quote.coupon:
                             Coupon.objects.filter(pk=quote.coupon.pk, uses_count__gt=0).update(uses_count=F('uses_count') - 1)
-                            
-                    self.message_user(request, f"Cotización #{quote.id} cancelada exitosamente." + (" Stock restaurado." if previous_status == 'paid' else ""), messages.WARNING)
+                    elif previous_status == 'backorder_paid':
+                        # Stock nunca se descontó, solo revertir cupón si aplica
+                        if quote.coupon:
+                            Coupon.objects.filter(pk=quote.coupon.pk, uses_count__gt=0).update(uses_count=F('uses_count') - 1)
+
+                    stock_msg = " Stock restaurado." if previous_status == 'paid' else ""
+                    self.message_user(request, f"Cotización #{quote.id} cancelada exitosamente.{stock_msg}", messages.WARNING)
             except Exception as e:
                 self.message_user(request, "Error al cancelar la cotización.", messages.ERROR)
         return redirect('admin:carts_quote_changelist')

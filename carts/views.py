@@ -13,7 +13,7 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 from django_filters.rest_framework import DjangoFilterBackend
 from django.contrib.auth import get_user_model
-from .tasks import send_quote_pdf_email, send_invoice_pdf_email, get_shop_info
+from .tasks import send_quote_pdf_email, send_invoice_pdf_email, send_backorder_email, get_shop_info
 from django.http import HttpResponse
 from django.template.loader import render_to_string
 from weasyprint import HTML, CSS
@@ -105,6 +105,9 @@ class CartViewSet(viewsets.ModelViewSet):
 
         quantity_to_add = 1 # Siempre añadimos 1 unidad con este endpoint
 
+        # bypass_stock: solo staff puede saltarse la validación de stock (modo backorder del POS)
+        bypass_stock = request.user.is_staff and request.data.get('bypass_stock', False)
+
         with transaction.atomic():
             cart_item, created = CartItem.objects.select_for_update().get_or_create(
                 cart=cart,
@@ -115,7 +118,7 @@ class CartViewSet(viewsets.ModelViewSet):
             current_qty_in_cart = cart_item.quantity
             new_total_quantity = current_qty_in_cart + quantity_to_add
 
-            if product.stock < new_total_quantity:
+            if not bypass_stock and product.stock < new_total_quantity:
                 current_in_cart_msg = f" Ya tienes {cart_item.quantity} en el carrito." if cart_item.quantity > 0 else ""
                 return Response(
                     {"error": f"Stock insuficiente para '{product.name}'. Disponible: {product.stock}. Intentaste añadir {quantity_to_add}.{current_in_cart_msg}"},
@@ -170,7 +173,7 @@ class CartViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-    @action(detail=False, methods=['post']) # Cambiamos a detail=False para operar en el carrito del usuario directamente
+    @action(detail=False, methods=['post'])
     def add_item(self, request):
         """
         Establece una cantidad específica para un producto en el carrito.
@@ -192,15 +195,18 @@ class CartViewSet(viewsets.ModelViewSet):
         except Product.DoesNotExist:
             return Response({"error": "Product not found"}, status=status.HTTP_400_BAD_REQUEST)
         
+        # bypass_stock: solo staff puede saltarse la validación de stock (modo backorder del POS)
+        bypass_stock = request.user.is_staff and request.data.get('bypass_stock', False)
+
         if quantity <= 0:
             CartItem.objects.filter(cart=cart, product=product).delete()
         else:
-            if product.stock < quantity:
+            if not bypass_stock and product.stock < quantity:
                 return Response(
                     {"error": f"Stock insuficiente para '{product.name}'. Disponible: {product.stock}. Solicitado: {quantity}."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             CartItem.objects.update_or_create(
                 cart=cart,
                 product=product,
@@ -489,7 +495,39 @@ class QuoteViewSet(viewsets.ModelViewSet):
         send_invoice_pdf_email.delay(quote.id)
         serializer = self.get_serializer(quote)
         return Response({
-            "message": f"Venta para la cotización #{quote.pk} finalizada exitosamente. Estado cambiado a 'pagado'.", 
+            "message": f"Venta para la cotización #{quote.pk} finalizada exitosamente. Estado cambiado a 'pagado'.",
+            "quote": serializer.data
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='finalize-backorder')
+    def finalize_backorder_sale(self, request, pk=None):
+        """
+        Confirma un pedido bajo pedido (sin stock disponible).
+        No descuenta stock. El stock se descuenta cuando se marca como enviado.
+        Solo accesible para administradores.
+        """
+        if not self.request.user.is_staff:
+            return Response({"error": "No autorizado para realizar esta acción."}, status=status.HTTP_403_FORBIDDEN)
+
+        quote = self.get_object()
+        if quote.status != 'pending':
+            return Response({"error": f"La cotización ya no está pendiente. Estado actual: {quote.status}."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            with transaction.atomic():
+                # Incrementar el uso del cupón si aplica
+                if quote.coupon:
+                    Coupon.objects.filter(pk=quote.coupon.pk).update(uses_count=F('uses_count') + 1)
+
+                quote.status = 'backorder_paid'
+                quote.save()
+        except Exception as e:
+            return Response({"error": "Ocurrió un error inesperado al confirmar el pedido."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        send_backorder_email.delay(quote.id)
+        serializer = self.get_serializer(quote)
+        return Response({
+            "message": f"Pedido #{quote.pk} confirmado como bajo pedido. Se notificará al cliente.",
             "quote": serializer.data
         }, status=status.HTTP_200_OK)
 
@@ -564,8 +602,8 @@ class QuoteViewSet(viewsets.ModelViewSet):
         if not self.request.user.is_staff and quote.user != self.request.user:
             return Response({"error": "No autorizado para cancelar esta cotización."}, status=status.HTTP_403_FORBIDDEN)
 
-        # Se puede cancelar si está 'pending' o 'paid' (para un reembolso)
-        if quote.status not in ['pending', 'paid']:
+        # Se puede cancelar si está 'pending', 'paid' o 'backorder_paid'
+        if quote.status not in ['pending', 'paid', 'backorder_paid']:
             return Response({"error": f"La cotización no se puede cancelar. Estado actual: {quote.status}"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Guardar el estado anterior para saber si debemos restaurar stock
@@ -575,16 +613,20 @@ class QuoteViewSet(viewsets.ModelViewSet):
             quote.status = 'cancelled'
             quote.save()
 
-            # Restaurar stock SOLO si venía de un estado donde el stock ya había sido descontado
-            # (En nuestro nuevo flujo, esto es solo si el estado era 'paid')
+            # Restaurar stock SOLO si el stock fue descontado ('paid').
+            # backorder_paid nunca descontó stock, así que no hay nada que restaurar.
             if previous_status == 'paid':
                 for item in quote.items.all():
-                    # select_for_update también es bueno aquí
                     product = Product.objects.select_for_update().get(pk=item.product.pk)
                     product.stock += item.quantity
                     product.save()
-                
-                # Restaurar el uso del cupón si se aplicó uno en esta cotización.
+
+                # Restaurar el uso del cupón solo si venía de 'paid'
+                if quote.coupon:
+                    Coupon.objects.filter(pk=quote.coupon.pk, uses_count__gt=0).update(uses_count=F('uses_count') - 1)
+
+            elif previous_status == 'backorder_paid':
+                # El stock no se restaura (nunca se descontó), pero sí el uso del cupón
                 if quote.coupon:
                     Coupon.objects.filter(pk=quote.coupon.pk, uses_count__gt=0).update(uses_count=F('uses_count') - 1)
 
@@ -604,16 +646,29 @@ class QuoteViewSet(viewsets.ModelViewSet):
             return Response({"error": "No autorizado para realizar esta acción."}, status=status.HTTP_403_FORBIDDEN)
 
         quote = self.get_object()
-        if quote.status != 'paid':
-            return Response({"error": f"Solo se pueden marcar como enviadas las cotizaciones pagadas. Estado actual: {quote.status}"}, status=status.HTTP_400_BAD_REQUEST)
+        if quote.status not in ['paid', 'backorder_paid']:
+            return Response({"error": f"Solo se pueden marcar como enviadas las cotizaciones pagadas o bajo pedido. Estado actual: {quote.status}"}, status=status.HTTP_400_BAD_REQUEST)
 
-        quote.status = 'shipped'
-        quote.save()
-        
-        # Aquí podrías añadir lógica para enviar un correo de notificación de envío al cliente.
+        try:
+            with transaction.atomic():
+                # Para pedidos backorder_paid, el stock se descuenta al momento del envío
+                if quote.status == 'backorder_paid':
+                    for item in quote.items.all():
+                        product = Product.objects.select_for_update().get(pk=item.product.pk)
+                        if product.stock < item.quantity:
+                            raise ValueError(f"Stock insuficiente para despachar '{product.name}'. Disponible: {product.stock}, Solicitado: {item.quantity}")
+                        product.stock -= item.quantity
+                        product.save()
+
+                quote.status = 'shipped'
+                quote.save()
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            return Response({"error": "Error inesperado al marcar como enviado."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         serializer = self.get_serializer(quote)
-        
+
         return Response({
             "message": f"Cotización #{quote.pk} marcada como enviada.",
             "quote": serializer.data

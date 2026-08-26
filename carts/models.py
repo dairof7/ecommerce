@@ -125,6 +125,7 @@ class Quote(models.Model):
         choices=[
             ('pending', 'Pending'),
             ('paid', 'Paid'),
+            ('backorder_paid', 'Bajo Pedido (Pagado)'),
             ('cancelled', 'Cancelled'),
             ('shipped', 'Shipped'),
         ],

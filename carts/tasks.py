@@ -141,3 +141,75 @@ def send_invoice_pdf_email(quote_id):
         return f"Correo de factura #{invoice.id} enviado a {customer_email}."
     except Exception as e:
         return f"Error al enviar correo de factura #{quote_id}: {str(e)}"
+
+
+@shared_task
+def send_backorder_email(quote_id):
+    """
+    Envía un correo al cliente confirmando que su pedido bajo pedido
+    fue registrado y está pendiente de llegada de stock.
+    """
+    try:
+        quote = Quote.objects.select_related('user', 'user__profile').prefetch_related('items', 'items__product').get(id=quote_id)
+
+        shop_info = get_shop_info()
+        subject = f'Pedido #{quote.id} confirmado - {shop_info["nombre_empresa"]} (En camino)'
+
+        if quote.user:
+            customer_name = quote.user.get_full_name() or quote.user.username
+            customer_email = quote.user.email
+            customer_document = getattr(quote.user.profile, 'document', 'No especificado')
+            customer_phone = getattr(quote.user.profile, 'phone', 'No especificado')
+            customer_address = getattr(quote.user.profile, 'address', 'No especificada')
+        else:
+            customer_name = quote.customer_name or 'N/A'
+            customer_email = quote.customer_email
+            customer_document = quote.customer_document or 'No especificado'
+            customer_phone = quote.customer_phone or 'No especificado'
+            customer_address = 'No especificada'
+
+        if not customer_email:
+            return f"Error: Pedido #{quote_id} no tiene email de destino."
+
+        message_text = (
+            f'Hola {customer_name},\n\n'
+            f'Tu pedido #{quote.id} ha sido confirmado y registrado.\n'
+            f'Los productos están siendo conseguidos y te notificaremos cuando estén listos para despacho.\n\n'
+            f'Para cualquier consulta, contáctanos por WhatsApp.\n\n'
+            f'¡Gracias por tu compra!'
+        )
+        from_email = settings.EMAIL_HOST_USER
+        to_email = [customer_email]
+
+        customer_info = {
+            'name': customer_name,
+            'email': customer_email,
+            'document': customer_document,
+            'phone': customer_phone,
+            'address': customer_address,
+        }
+
+        context = {
+            'document': quote,
+            'shop_info': shop_info,
+            'customer_info': customer_info,
+            'vendedor_info': {
+                'nombre_empresa': shop_info['nombre_empresa'],
+                'nit': shop_info['nit'],
+                'nombre': shop_info['nombre'],
+                'cedula': shop_info['cedula'],
+            }
+        }
+
+        html_string = render_to_string('carts/pdf/invoice_template.html', context)
+        pdf_file = HTML(string=html_string).write_pdf()
+
+        email = EmailMessage(subject, message_text, from_email, to_email)
+        email.attach(f'pedido_{quote.id}.pdf', pdf_file, 'application/pdf')
+        email.send()
+
+        return f"Correo de backorder #{quote_id} enviado a {customer_email}."
+    except Quote.DoesNotExist:
+        return f"Error: Pedido con ID {quote_id} no encontrado."
+    except Exception as e:
+        return f"Error al enviar correo de backorder #{quote_id}: {str(e)}"
