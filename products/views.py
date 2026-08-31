@@ -65,12 +65,13 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         # Anotación y ordenamiento para todos
         queryset = base_queryset.annotate(
-            stock_empty=Case(
-                When(stock=0, then=Value(1)),
-                default=Value(0),
+            availability_status=Case(
+                When(stock__gt=0, then=Value(0)),                      # Prioridad 0: En stock
+                When(stock=0, incoming_stock__gt=0, then=Value(1)),    # Prioridad 1: Llegará pronto
+                default=Value(2),                                      # Prioridad 2: Totalmente agotado
                 output_field=IntegerField(),
             )
-        ).order_by('stock_empty', '-is_featured', '-discount', '-created_at')
+        ).order_by('availability_status', '-is_featured', '-discount', '-created_at')
         return queryset
 
     # permission_classes = [permissions.IsAdminUser] # Descomentar si quieres que solo los administradores puedan acceder a esta vista
