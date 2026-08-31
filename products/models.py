@@ -187,6 +187,15 @@ class Product(models.Model):
         # Podrías devolver el objeto Discount o un diccionario con {type: 'product'/'category', percentage: X}
         return None # Placeholder
 
+    def clean(self):
+        super().clean()
+        if self.category and self.subcategory:
+            if self.subcategory.category != self.category:
+                from django.core.exceptions import ValidationError
+                raise ValidationError({
+                    'subcategory': f'La subcategoría "{self.subcategory.name}" no pertenece a la categoría "{self.category.name}".'
+                })
+
     def __str__(self):
         return self.name
 
