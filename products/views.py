@@ -206,6 +206,7 @@ class ProductImageViewSet(viewsets.ModelViewSet):
 
 class RelevantTagsView(views.APIView):
     permission_classes = [permissions.AllowAny] # Los tags relevantes suelen ser públicos
+    search_fields = ['name', 'description', 'category__name', 'subcategory__name', 'tags__name', 'brand__name']
 
     def get(self, request, *args, **kwargs):
         # 1. Obtener los productos que coinciden con los filtros actuales
@@ -237,10 +238,15 @@ class RelevantTagsView(views.APIView):
         # if 'search' in filtering_params:
         #     filtering_params['name'] = filtering_params['search']
         
-        # Aplicar los filtros de producto (categoría, subcategoría, búsqueda, etc.)
+        # Aplicar los filtros de producto (categoría, subcategoría, etc.)
         # utilizando tu ProductFilter existente.
         product_filter = ProductFilter(data=filtering_params, queryset=product_queryset, request=request)
         filtered_products_qs = product_filter.qs # Este es el queryset de productos ya filtrados
+        
+        # Aplicar el filtro de búsqueda de texto libre
+        search_filter = filters.SearchFilter()
+        filtered_products_qs = search_filter.filter_queryset(request, filtered_products_qs, self)
+
         # 2. A partir de estos productos filtrados, obtener los tags y su conteo
         # Usamos annotate para contar cuántos productos filtrados tiene cada tag.
         # distinct=True en Count es importante si un producto puede tener el mismo tag múltiples veces
@@ -260,6 +266,7 @@ class RelevantTagsView(views.APIView):
 
 class RelevantBrandsView(views.APIView):
     permission_classes = [permissions.AllowAny]
+    search_fields = ['name', 'description', 'category__name', 'subcategory__name', 'tags__name', 'brand__name']
 
     def get(self, request, *args, **kwargs):
         product_queryset = Product.objects.all()
@@ -270,6 +277,10 @@ class RelevantBrandsView(views.APIView):
         
         product_filter = ProductFilter(data=filtering_params, queryset=product_queryset, request=request)
         filtered_products_qs = product_filter.qs
+        
+        # Aplicar el filtro de búsqueda de texto libre
+        search_filter = filters.SearchFilter()
+        filtered_products_qs = search_filter.filter_queryset(request, filtered_products_qs, self)
         
         relevant_brands_qs = Brand.objects.filter(
             products__in=filtered_products_qs 
