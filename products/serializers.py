@@ -105,6 +105,7 @@ class ProductSerializer(serializers.ModelSerializer):
             'final_sale_price',         # Precio final a pagar
             'has_discount',             # Booleano para UI
             'stock',
+            'incoming_stock',           # Stock en transito
             'is_active',
             'is_service',
             'is_featured',
@@ -113,7 +114,7 @@ class ProductSerializer(serializers.ModelSerializer):
             'brand_name',
             'category_id', 'subcategory_id', 'tag_ids'
         ]
-        read_only_fields = ('stock', 'created_at', 'updated_at', 'brand_name')
+        read_only_fields = ('stock', 'incoming_stock', 'created_at', 'updated_at', 'brand_name')
 
     def get_applied_discount_percentage(self, obj) -> Decimal:
         # Esta lógica debe ser consistente con cómo se calcula final_sale_price en el modelo
