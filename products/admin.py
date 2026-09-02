@@ -86,10 +86,17 @@ class ProductImageInline(admin.TabularInline):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ('id','name', 'brand', 'pp_display','sale_price','final_price', 'stock', 'discount', 'is_active', 'is_service', 'is_combo', 'is_featured', 'category', 'subcategory')
+    list_display = ('image_thumbnail', 'name', 'brand', 'pp_display','sale_price','final_price', 'stock', 'discount', 'is_active', 'is_service', 'is_combo', 'is_featured', 'category', 'subcategory')
+    list_display_links = ('image_thumbnail', 'name')
     list_filter = ('is_active', 'is_service', 'is_combo', ('category', DropdownFilter), ('subcategory', DropdownFilter), ('brand', DropdownFilter), ('supplier', DropdownFilter), ('tags', DropdownFilter), 'is_featured')
     search_fields = ('name', 'description', 'brand__name')
     list_editable = ('is_active', 'is_service', 'is_combo', 'is_featured',)
+    list_per_page = 25
+    list_select_related = ('brand', 'category', 'subcategory')
+    
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.prefetch_related('images')
     inlines = [ProductImageInline]
     filter_horizontal = ('tags',)  # Para una mejor interfaz de selección de tags
     readonly_fields = ('final_price',)
@@ -133,6 +140,18 @@ class ProductAdmin(admin.ModelAdmin):
         return obj.final_sale_price
     final_price.short_description = 'PF (-disc)'
 
+    def image_thumbnail(self, obj):
+        image = obj.images.first()
+        if image and image.image:
+            return format_html(
+                '<img src="{}" style="width: 45px; height:45px; object-fit:cover; border-radius: 4px; transition: transform .2s;" '
+                'onmouseover="this.style.transform=\'scale(3)\'; this.style.zIndex=\'100\'; this.style.position=\'relative\';" '
+                'onmouseout="this.style.transform=\'scale(1)\'; this.style.zIndex=\'1\'; this.style.position=\'static\';" />',
+                image.image.url
+            )
+        return "-"
+    image_thumbnail.short_description = 'Img'
+
 @admin.register(ProductImage)
 class ProductImageAdmin(admin.ModelAdmin):
     list_display = ('product', 'image', 'alt_text')
@@ -158,12 +177,16 @@ class StockStatusFilter(admin.SimpleListFilter):
 
 @admin.register(ProductPricing)
 class ProductPricingAdmin(admin.ModelAdmin):
-    list_display = ('id', 'image_thumbnail', 'name', 'purchase_price',  'sale_price', 'discount', 'final_price', 'net_profit', 'profit_margin', 'stock', 'incoming_stock', 'is_active', 'reference_usd_cost', 'reference_cop_cost')
-    list_display_links = ('id', 'name')
+    list_display = ('image_thumbnail', 'product_name_link', 'purchase_price',  'sale_price', 'discount', 'final_price', 'net_profit', 'profit_margin', 'stock', 'incoming_stock', 'is_active', 'reference_usd_cost', 'reference_cop_cost')
+    list_display_links = ('image_thumbnail',)
     list_editable = ('purchase_price', 'reference_usd_cost', 'reference_cop_cost', 'sale_price', 'discount', 'incoming_stock', 'is_active')
     list_filter = ('is_active', StockStatusFilter, ('brand', DropdownFilter), ('supplier', DropdownFilter), ('category', DropdownFilter), ('subcategory', DropdownFilter), ('tags', DropdownFilter))
     search_fields = ('name',)
-    list_per_page = 100
+    list_per_page = 25
+    
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.prefetch_related('images')
     
     formfield_overrides = {
         models.DecimalField: {'widget': NumberInput(attrs={'style': 'width: 80px;'})},
@@ -179,6 +202,13 @@ class ProductPricingAdmin(admin.ModelAdmin):
         }),
     )
     readonly_fields = ('name', 'stock', 'final_price', 'net_profit', 'profit_margin')
+
+    def product_name_link(self, obj):
+        from django.urls import reverse
+        url = reverse('admin:products_product_change', args=[obj.pk])
+        return format_html('<a href="{}" title="Ir a Detalles del Producto">{}</a>', url, obj.name)
+    product_name_link.short_description = 'Name'
+    product_name_link.admin_order_field = 'name'
 
     def final_price(self, obj):
         return obj.final_sale_price

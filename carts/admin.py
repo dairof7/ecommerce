@@ -42,7 +42,8 @@ class QuoteItemInline(admin.TabularInline):
 class QuoteAdmin(admin.ModelAdmin):
     list_display = ('id', 'user', 'customer_name', 'customer_email', 'status', 'total', 'profit', 'created_at', 'receipt_actions', 'quote_actions')
     list_filter = ('status', 'created_at', 'user')
-    search_fields = ('user__username', 'customer_name', 'customer_email', 'coupon__code')
+    search_fields = ('user__username', 'customer_name', 'customer_email', 'coupon__code', 'items__product__name')
+    date_hierarchy = 'created_at'
     readonly_fields = ('user', 'cart', 'created_at', 'updated_at', 'total', 'coupon_discount')
     inlines = [QuoteItemInline] # Mostrar los items de la cotización
     

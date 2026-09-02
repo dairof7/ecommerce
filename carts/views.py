@@ -399,6 +399,7 @@ class QuoteViewSet(viewsets.ModelViewSet):
         'customer_name', # Buscar por nombre del cliente
         'customer_email', # Buscar por email del cliente
         'customer_document', # Buscar por documento del cliente
+        'items__product__name', # Buscar por producto vendido
     ]
     
     # Campos por los que el admin podrá filtrar con valores exactos (ej. ?status=pending)
@@ -445,6 +446,13 @@ class QuoteViewSet(viewsets.ModelViewSet):
         # después de que este método devuelva el queryset.
         if not self.request.user.is_staff:
             queryset = queryset.filter(user=self.request.user)
+            
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        if start_date:
+            queryset = queryset.filter(created_at__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(created_at__lte=end_date + " 23:59:59")
             
         return queryset
 

@@ -76,6 +76,7 @@ class QuoteSerializer(serializers.ModelSerializer):
     user_detail = UserProfileSerializer(source='user.profile', read_only=True)
     coupon = CouponSerializer(read_only=True)
     subtotal = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    profit = serializers.SerializerMethodField()
 
     # class Meta:
     #     model = Quote
@@ -101,9 +102,16 @@ class QuoteSerializer(serializers.ModelSerializer):
             'coupon',
             'coupon_discount',
             'total', 
+            'profit',
             'items',
             'user_detail'
         ]
         # Hacemos 'user' de solo lectura porque se establecerá automáticamente
         # si la solicitud la hace un usuario autenticado, no se debe poder asignar manualmente.
-        read_only_fields = ['user', 'cart', 'created_at', 'updated_at', 'total', 'items', 'user_email', 'subtotal', 'coupon', 'coupon_discount']
+        read_only_fields = ['user', 'cart', 'created_at', 'updated_at', 'total', 'items', 'user_email', 'subtotal', 'coupon', 'coupon_discount', 'profit']
+        
+    def get_profit(self, obj):
+        ganancia = sum((item.price_at_quote - item.cost_at_quote) * item.quantity for item in obj.items.all())
+        if obj.coupon_discount:
+            ganancia -= obj.coupon_discount
+        return ganancia
