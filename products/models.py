@@ -103,10 +103,8 @@ class Product(models.Model):
     is_combo = models.BooleanField("Es un Kit/Combo", default=False, help_text="Marcar para evitar conteo doble en los reportes de inventario.")
     sale_price = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
     
-    # Costos de Referencia (Administrativos)
-    reference_usd_cost = models.DecimalField("Costo USD (Referencia)", max_digits=10, decimal_places=2, null=True, blank=True, help_text="Costo en dólares. Solo para uso interno.")
-    reference_cop_cost = models.DecimalField("Costo COP (Referencia)", max_digits=12, decimal_places=2, null=True, blank=True, help_text="Costo en pesos colombianos. Se calcula automáticamente o se puede editar manual.")
-    
+    # Costos de Referencia (Administrativos) eliminados por solicitud del usuario
+
     # Este 'discount' es el descuento base/individual del producto
     discount = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'))
     created_at = models.DateTimeField(auto_now_add=True)

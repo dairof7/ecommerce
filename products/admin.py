@@ -7,7 +7,7 @@ from django.http import HttpResponseRedirect
 from django.utils.html import format_html
 from django.contrib import messages
 from django.contrib.admin import RelatedFieldListFilter
-from .tasks import update_cop_costs_from_usd
+
 from decimal import Decimal
 from inventory.models import StockEntry
 
@@ -110,28 +110,11 @@ class ProductAdmin(admin.ModelAdmin):
         ('Precios e Inventario', {
             'fields': ('purchase_price', 'average_cost', 'sale_price', 'final_price', 'stock', 'discount')
         }),
-        ('Costos de Importación (Solo Admin)', {
-            'fields': ('reference_usd_cost', 'reference_cop_cost'),
-            'classes': ('collapse',)
-        }),
         ('Configuración Adicional', {
             'fields': ('is_active', 'is_featured', 'is_service', 'is_combo')
         })
     )
     
-    actions = ['force_update_cop_costs']
-
-    def force_update_cop_costs(self, request, queryset):
-        # Esta acción no requiere procesar el queryset porque la tarea busca todos los productos con USD cost
-        # Pero podemos procesar el queryset si quisieramos. En este caso actualizamos todos.
-        result_message = update_cop_costs_from_usd()
-        if "Éxito" in result_message:
-            self.message_user(request, result_message, level=messages.SUCCESS)
-        else:
-            self.message_user(request, result_message, level=messages.ERROR)
-            
-    force_update_cop_costs.short_description = "Sincronizar Costos COP desde USD (Tasa de Cambio Actual)"
-
     def pp_display(self, obj):
         return obj.purchase_price
     pp_display.short_description = 'PP'
@@ -177,9 +160,9 @@ class StockStatusFilter(admin.SimpleListFilter):
 
 @admin.register(ProductPricing)
 class ProductPricingAdmin(admin.ModelAdmin):
-    list_display = ('image_thumbnail', 'product_name_link', 'purchase_price',  'sale_price', 'discount', 'final_price', 'net_profit', 'profit_margin', 'stock', 'incoming_stock', 'is_active', 'reference_usd_cost', 'reference_cop_cost')
+    list_display = ('image_thumbnail', 'product_name_link', 'purchase_price',  'sale_price', 'discount', 'final_price', 'net_profit', 'profit_margin', 'stock', 'incoming_stock', 'is_active')
     list_display_links = ('image_thumbnail',)
-    list_editable = ('purchase_price', 'reference_usd_cost', 'reference_cop_cost', 'sale_price', 'discount', 'incoming_stock', 'is_active')
+    list_editable = ('purchase_price', 'sale_price', 'discount', 'incoming_stock', 'is_active')
     list_filter = ('is_active', StockStatusFilter, ('brand', DropdownFilter), ('supplier', DropdownFilter), ('category', DropdownFilter), ('subcategory', DropdownFilter), ('tags', DropdownFilter))
     search_fields = ('name',)
     list_per_page = 25
@@ -198,7 +181,7 @@ class ProductPricingAdmin(admin.ModelAdmin):
             'fields': ('name',)
         }),
         ('Precios e Inventario', {
-            'fields': ('purchase_price', 'reference_usd_cost', 'reference_cop_cost', 'sale_price', 'discount', 'final_price', 'net_profit', 'profit_margin', 'stock', 'incoming_stock')
+            'fields': ('purchase_price', 'sale_price', 'discount', 'final_price', 'net_profit', 'profit_margin', 'stock', 'incoming_stock')
         }),
     )
     readonly_fields = ('name', 'stock', 'final_price', 'net_profit', 'profit_margin')
