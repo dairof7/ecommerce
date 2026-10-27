@@ -9,10 +9,8 @@ from django.contrib.auth import get_user_model
 from rest_framework import generics, permissions, status, filters
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
-from .serializers import UserSearchSerializer
-
 from .models import UserProfile
-from .serializers import UserRegistrationSerializer, UserProfileSerializer
+from .serializers import UserRegistrationSerializer, UserProfileSerializer, POSCustomerCreateSerializer, UserSearchSerializer
 
 # Standard practice to get the active User model.
 User = get_user_model()
@@ -95,3 +93,19 @@ class UserSearchView(generics.ListAPIView):
         # O puedes devolver todos si un admin puede comprar para otro admin.
         # Por ahora, excluimos al personal.
         return User.objects.filter(is_staff=False, is_superuser=False).select_related('profile')
+
+
+class POSCustomerCreateView(generics.CreateAPIView):
+    """
+    Vista para que los administradores/cajeros puedan registrar rápidamente
+    un nuevo cliente desde el Punto de Venta (POS) y asociarlo de inmediato a la venta.
+    """
+    serializer_class = POSCustomerCreateSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        response_serializer = UserSearchSerializer(user)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)

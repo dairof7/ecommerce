@@ -166,6 +166,7 @@ class ProductPricingAdmin(admin.ModelAdmin):
     list_filter = ('is_active', StockStatusFilter, ('brand', DropdownFilter), ('supplier', DropdownFilter), ('category', DropdownFilter), ('subcategory', DropdownFilter), ('tags', DropdownFilter))
     search_fields = ('name',)
     list_per_page = 25
+    ordering = ('-incoming_stock',)
     
     def get_queryset(self, request):
         qs = super().get_queryset(request)

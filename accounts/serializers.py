@@ -107,3 +107,68 @@ class UserSearchSerializer(serializers.ModelSerializer):
         if obj.username:
             return obj.username
         return obj.email
+
+class POSCustomerCreateSerializer(serializers.Serializer):
+    first_name = serializers.CharField(max_length=150, required=True)
+    last_name = serializers.CharField(max_length=150, required=False, allow_blank=True, default='')
+    email = serializers.EmailField(required=True)
+    document = serializers.CharField(max_length=50, required=False, allow_blank=True, default='')
+    phone = serializers.CharField(max_length=50, required=False, allow_blank=True, default='')
+    address = serializers.CharField(max_length=255, required=False, allow_blank=True, default='')
+    password = serializers.CharField(max_length=128, required=False, allow_blank=True, default='')
+
+    def validate_email(self, value):
+        email = value.lower().strip()
+        if User.objects.filter(email=email).exists():
+            raise serializers.ValidationError("Ya existe un usuario con este correo electrónico.")
+        return email
+
+    def create(self, validated_data):
+        email = validated_data['email']
+        first_name = validated_data.get('first_name', '').strip()
+        last_name = validated_data.get('last_name', '').strip()
+        document = validated_data.get('document', '').strip()
+        phone = validated_data.get('phone', '').strip()
+        address = validated_data.get('address', '').strip()
+        password = validated_data.get('password', '').strip()
+
+        # Generar contraseña por defecto si no se proporcionó
+        if not password:
+            if document and len(document) >= 6:
+                password = document
+            elif phone and len(phone) >= 6:
+                password = phone
+            else:
+                import secrets
+                import string
+                alphabet = string.ascii_letters + string.digits
+                password = ''.join(secrets.choice(alphabet) for _ in range(10))
+
+        # Generar username único basado en email
+        base_username = email.split('@')[0][:100]
+        username = base_username
+        counter = 1
+        while User.objects.filter(username=username).exists():
+            username = f"{base_username[:90]}_{counter}"
+            counter += 1
+
+        with transaction.atomic():
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=password,
+                first_name=first_name,
+                last_name=last_name,
+                is_staff=False,
+                is_superuser=False,
+                is_active=True
+            )
+            UserProfile.objects.update_or_create(
+                user=user,
+                defaults={
+                    'document': document,
+                    'phone': phone,
+                    'address': address
+                }
+            )
+        return user

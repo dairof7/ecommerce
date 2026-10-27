@@ -30,7 +30,10 @@
     <div class="pos-container">
         <!-- Columna 1: Cliente y Resumen -->
         <div class="pos-cart">
-            <h2>Datos del Cliente</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h2 style="margin: 0;">Datos del Cliente</h2>
+                <button type="button" id="open-new-user-btn" class="pos-btn" style="background: #28a745; padding: 4px 10px; font-size: 12px; font-weight: bold;">+ Inscribir Cliente</button>
+            </div>
             <div class="relative">
                 <input type="text" id="user-search" class="pos-input" placeholder="Buscar Cliente Registrado..." autocomplete="off">
                 <ul id="user-results" class="search-results" style="display: none;"></ul>
@@ -40,7 +43,10 @@
                 <button type="button" id="clear-user-btn" style="float: right; color: red; border: none; background: none; cursor: pointer; font-weight: bold;">X</button>
             </div>
             <div id="guest-form">
-                <p style="font-size: 12px; color: #666; margin-bottom: 5px;">O ingresa datos para invitado:</p>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                    <span style="font-size: 12px; color: #666;">O ingresa datos para invitado:</span>
+                    <a href="javascript:void(0)" id="guest-signup-link" style="font-size: 11px; color: #417690; text-decoration: underline;">¿Desea inscribirse?</a>
+                </div>
                 <input type="text" id="guest-name" class="pos-input" placeholder="Nombre">
                 <input type="email" id="guest-email" class="pos-input" placeholder="Email">
                 <input type="text" id="guest-document" class="pos-input" placeholder="Documento">
@@ -71,6 +77,36 @@
             <h2 style="margin-top: 20px;">Carrito Actual</h2>
             <div id="cart-items">
                 <p style="color: #666; font-style: italic;">Cargando carrito...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Inscribir Nuevo Cliente -->
+    <div id="new-user-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+        <div style="background: white; padding: 22px; border-radius: 8px; width: 440px; max-width: 92%; box-shadow: 0 4px 20px rgba(0,0,0,0.25); box-sizing: border-box;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 12px;">
+                <h3 style="margin: 0; font-size: 17px; color: #333;">Inscribir Nuevo Cliente</h3>
+                <button type="button" id="close-new-user-btn" style="border: none; background: none; font-size: 20px; cursor: pointer; color: #888;">&times;</button>
+            </div>
+            <p style="font-size: 12px; color: #666; margin-top: 0; margin-bottom: 12px;">Registra al cliente en la tienda física y vincúlalo de inmediato a esta venta.</p>
+            <div id="new-user-error" style="display: none; color: #721c24; background: #f8d7da; border: 1px solid #f5c6cb; padding: 8px 12px; border-radius: 4px; margin-bottom: 12px; font-size: 12px;"></div>
+            
+            <div style="display: flex; gap: 10px;">
+                <input type="text" id="nu-firstname" class="pos-input" placeholder="Nombre *">
+                <input type="text" id="nu-lastname" class="pos-input" placeholder="Apellido">
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <input type="text" id="nu-document" class="pos-input" placeholder="Cédula / Documento">
+                <input type="text" id="nu-phone" class="pos-input" placeholder="Teléfono">
+            </div>
+            <input type="email" id="nu-email" class="pos-input" placeholder="Correo Electrónico *">
+            <input type="text" id="nu-address" class="pos-input" placeholder="Dirección (opcional)">
+            <input type="password" id="nu-password" class="pos-input" placeholder="Contraseña (opcional, si vacía usa cédula)">
+            <p style="font-size: 11px; color: #888; margin-top: -5px; margin-bottom: 15px;">Si se deja vacía, el cliente podrá usar su cédula como clave o restablecerla luego.</p>
+            
+            <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                <button type="button" id="cancel-new-user-btn" class="pos-btn" style="background: #6c757d;">Cancelar</button>
+                <button type="button" id="save-new-user-btn" class="pos-btn" style="background: #28a745;">Inscribir y Seleccionar</button>
             </div>
         </div>
     </div>
@@ -256,8 +292,93 @@
 
     document.getElementById('clear-user-btn').onclick = () => {
         selectedUser = null;
+        document.getElementById('selected-user-name').innerText = '';
         document.getElementById('selected-user-info').style.display = 'none';
         document.getElementById('guest-form').style.display = 'block';
+    };
+
+    // --- Manejo del Modal de Inscribir Nuevo Cliente ---
+    const nuModal = document.getElementById('new-user-modal');
+    const nuError = document.getElementById('new-user-error');
+
+    function openNewUserModal() {
+        nuError.style.display = 'none';
+        const gName = (document.getElementById('guest-name').value || '').trim();
+        if (gName) {
+            const parts = gName.split(' ');
+            document.getElementById('nu-firstname').value = parts[0] || '';
+            document.getElementById('nu-lastname').value = parts.slice(1).join(' ') || '';
+        }
+        document.getElementById('nu-email').value = document.getElementById('guest-email').value || '';
+        document.getElementById('nu-document').value = document.getElementById('guest-document').value || '';
+        document.getElementById('nu-phone').value = document.getElementById('guest-phone').value || '';
+        document.getElementById('nu-password').value = '';
+        nuModal.style.display = 'flex';
+    }
+
+    function closeNewUserModal() {
+        nuModal.style.display = 'none';
+    }
+
+    document.getElementById('open-new-user-btn').onclick = openNewUserModal;
+    document.getElementById('guest-signup-link').onclick = openNewUserModal;
+    document.getElementById('close-new-user-btn').onclick = closeNewUserModal;
+    document.getElementById('cancel-new-user-btn').onclick = closeNewUserModal;
+
+    document.getElementById('save-new-user-btn').onclick = async () => {
+        const firstName = document.getElementById('nu-firstname').value.trim();
+        const lastName = document.getElementById('nu-lastname').value.trim();
+        const email = document.getElementById('nu-email').value.trim();
+        const doc = document.getElementById('nu-document').value.trim();
+        const phone = document.getElementById('nu-phone').value.trim();
+        const address = document.getElementById('nu-address').value.trim();
+        const password = document.getElementById('nu-password').value.trim();
+
+        if (!firstName) {
+            nuError.innerText = 'El nombre es obligatorio.';
+            nuError.style.display = 'block';
+            return;
+        }
+        if (!email) {
+            nuError.innerText = 'El correo electrónico es obligatorio.';
+            nuError.style.display = 'block';
+            return;
+        }
+
+        const saveBtn = document.getElementById('save-new-user-btn');
+        saveBtn.disabled = true;
+        saveBtn.innerText = 'Inscribiendo...';
+        nuError.style.display = 'none';
+
+        try {
+            const newUser = await apiCall('/api/accounts/pos-create-user/', 'POST', {
+                first_name: firstName,
+                last_name: lastName,
+                email: email,
+                document: doc,
+                phone: phone,
+                address: address,
+                password: password
+            });
+
+            selectedUser = newUser;
+            const displayName = newUser.full_name || (newUser.first_name + ' ' + newUser.last_name).trim() || newUser.email;
+            document.getElementById('selected-user-name').innerText = displayName;
+            document.getElementById('selected-user-info').style.display = 'block';
+            document.getElementById('guest-form').style.display = 'none';
+            closeNewUserModal();
+            alert(`¡Cliente "${displayName}" inscrito y seleccionado exitosamente!`);
+        } catch (err) {
+            let msg = 'Error al registrar el cliente.';
+            if (err.email) msg = Array.isArray(err.email) ? err.email[0] : err.email;
+            else if (err.error) msg = err.error;
+            else if (err.detail) msg = err.detail;
+            nuError.innerText = msg;
+            nuError.style.display = 'block';
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.innerText = 'Inscribir y Seleccionar';
+        }
     };
 
     document.getElementById('apply-coupon-btn').onclick = async () => {
