@@ -4,11 +4,14 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from .models import Cart, CartItem, Quote, QuoteItem, Coupon
 from products.models import Product
+from inventory.models import DailyStockSnapshot
 from .serializers import CartSerializer, CartItemSerializer, QuoteSerializer
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Sum, DecimalField, OuterRef, Subquery
+from django.db.models.functions import TruncMonth
 from decimal import Decimal
+from datetime import datetime
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 from django_filters.rest_framework import DjangoFilterBackend
@@ -323,13 +326,30 @@ class CartViewSet(viewsets.ModelViewSet):
         customer_email = customer_data.get('email', '')
         customer_document = customer_data.get('document', '')
         customer_phone = customer_data.get('phone', '')
+        customer_address = customer_data.get('address', '')
 
-        if quote_user and not customer_name and not customer_email:
-            customer_name = quote_user.get_full_name() or quote_user.username
-            customer_email = quote_user.email
+        paid_amount_raw = request.data.get('paid_amount', 0)
+        try:
+            paid_amount = Decimal(str(paid_amount_raw)) if paid_amount_raw is not None else Decimal('0.00')
+            if paid_amount < Decimal('0.00'):
+                paid_amount = Decimal('0.00')
+        except Exception:
+            paid_amount = Decimal('0.00')
+
+        notes = str(request.data.get('notes', '') or '').strip()
+
+        if quote_user:
+            if not customer_name:
+                customer_name = quote_user.get_full_name() or quote_user.username
+            if not customer_email:
+                customer_email = quote_user.email
             if hasattr(quote_user, 'profile'):
-                customer_document = quote_user.profile.document or ''
-                customer_phone = quote_user.profile.phone or ''
+                if not customer_document:
+                    customer_document = quote_user.profile.document or ''
+                if not customer_phone:
+                    customer_phone = quote_user.profile.phone or ''
+                if not customer_address:
+                    customer_address = quote_user.profile.address or ''
 
         try:
             with transaction.atomic():
@@ -357,10 +377,13 @@ class CartViewSet(viewsets.ModelViewSet):
                     coupon=coupon_to_apply,
                     coupon_discount=coupon_discount_amount,
                     total=final_total,
+                    paid_amount=paid_amount,
+                    notes=notes,
                     customer_name=customer_name,
                     customer_email=customer_email,
                     customer_document=customer_document,
                     customer_phone=customer_phone,
+                    customer_address=customer_address,
                 )
                 
                 quote_items_to_create = []
@@ -568,7 +591,11 @@ class QuoteViewSet(viewsets.ModelViewSet):
         customer_info = {'name': customer_name}
 
         # --- LÓGICA DE ALTURA DINÁMICA ---
-        base_height_mm = 90 
+        base_height_mm = 90
+        if quote.paid_amount and quote.paid_amount > 0:
+            base_height_mm += 14
+        if quote.notes:
+            base_height_mm += 20
         item_height_mm = 12
         num_items = quote.items.count()
         total_height = base_height_mm + (num_items * item_height_mm)
@@ -681,3 +708,359 @@ class QuoteViewSet(viewsets.ModelViewSet):
             "message": f"Cotización #{quote.pk} marcada como enviada.",
             "quote": serializer.data
         }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='resend-email')
+    def resend_email(self, request, pk=None):
+        """
+        Reenvía la factura o cotización en PDF por correo electrónico al cliente.
+        Permite actualizar opcionalmente el email de destino.
+        Solo accesible para administradores.
+        """
+        if not self.request.user.is_staff:
+            return Response({"error": "No autorizado para realizar esta acción."}, status=status.HTTP_403_FORBIDDEN)
+
+        quote = self.get_object()
+        target_email = request.data.get('email', '').strip()
+        doc_type = request.data.get('type', '').strip()
+
+        if target_email:
+            quote.customer_email = target_email
+            quote.save(update_fields=['customer_email'])
+
+        destinatario = quote.customer_email or (quote.user.email if quote.user else None)
+        if not destinatario:
+            return Response({"error": "No hay un correo electrónico registrado para enviar el documento."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if doc_type == 'invoice' or (not doc_type and quote.status in ['paid', 'shipped']):
+            send_invoice_pdf_email.delay(quote.id)
+            tipo_desc = "Factura de Venta"
+        elif doc_type == 'backorder' or (not doc_type and quote.status == 'backorder_paid'):
+            send_backorder_email.delay(quote.id)
+            tipo_desc = "Confirmación de Pedido Bajo Pedido"
+        else:
+            send_quote_pdf_email.delay(quote.id)
+            tipo_desc = "Cotización"
+
+        return Response({
+            "message": f"Se ha enviado la {tipo_desc} #{quote.id} con éxito a {destinatario}.",
+            "recipient": destinatario
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='invoice-pdf')
+    def invoice_pdf(self, request, pk=None):
+        """
+        Genera y devuelve la Factura / Cotización formal en PDF (A4/Carta).
+        """
+        quote = self.get_object()
+        if not request.user.is_staff and quote.user != request.user:
+            return Response({"error": "No autorizado para ver este documento."}, status=status.HTTP_403_FORBIDDEN)
+
+        shop_info = get_shop_info()
+
+        if quote.user:
+            customer_name = quote.customer_name or quote.user.get_full_name() or quote.user.username
+            customer_email = quote.customer_email or quote.user.email
+            customer_document = quote.customer_document or getattr(quote.user.profile, 'document', 'No especificado')
+            customer_phone = quote.customer_phone or getattr(quote.user.profile, 'phone', 'No especificado')
+            customer_address = quote.customer_address or getattr(quote.user.profile, 'address', 'No especificada')
+        else:
+            customer_name = quote.customer_name or 'N/A'
+            customer_email = quote.customer_email
+            customer_document = quote.customer_document or 'No especificado'
+            customer_phone = quote.customer_phone or 'No especificado'
+            customer_address = quote.customer_address or 'No especificada'
+
+        customer_info = {
+            'name': customer_name,
+            'email': customer_email,
+            'document': customer_document,
+            'phone': customer_phone,
+            'address': customer_address
+        }
+
+        context = {
+            'document': quote,
+            'shop_info': shop_info,
+            'customer_info': customer_info,
+            'vendedor_info': {
+                'nombre_empresa': shop_info['nombre_empresa'],
+                'nit': shop_info['nit'],
+                'nombre': shop_info['nombre'],
+                'cedula': shop_info['cedula'],
+            }
+        }
+
+        template_name = 'carts/pdf/invoice_template.html' if quote.status in ['paid', 'shipped', 'backorder_paid'] else 'carts/pdf/quote_template.html'
+        html_string = render_to_string(template_name, context)
+        pdf_file = HTML(string=html_string).write_pdf()
+
+        doc_prefix = "factura" if quote.status in ['paid', 'shipped', 'backorder_paid'] else "cotizacion"
+        response = HttpResponse(pdf_file, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="{doc_prefix}_{quote.id}.pdf"'
+        return response
+
+    @action(detail=False, methods=['get'], url_path='sales-dashboard', permission_classes=[permissions.IsAdminUser])
+    def sales_dashboard(self, request):
+        """
+        Retorna las métricas y series temporales para el Dashboard de Ventas:
+        - Valoración del inventario físico y en tránsito
+        - Top 10 más vendidos (con filtro sale_price > 45000)
+        - Top 10 más rentables
+        - Serie temporal mensual de ventas y ganancias
+        - Serie temporal de ventas por categoría
+        """
+        if not request.user.is_staff:
+            return Response({"error": "No autorizado para acceder al dashboard de ventas."}, status=status.HTTP_403_FORBIDDEN)
+
+        current_time = timezone.now()
+        TOP_N = 10
+        
+        # Rango por defecto: últimos 6 meses
+        end_date_default = current_time.date()
+        m = end_date_default.month - 5
+        y = end_date_default.year
+        while m <= 0:
+            m += 12
+            y -= 1
+        start_date_default = end_date_default.replace(year=y, month=m, day=1)
+
+        start_date_str = request.GET.get('start_date')
+        end_date_str = request.GET.get('end_date')
+
+        if start_date_str and end_date_str:
+            try:
+                start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+            except ValueError:
+                start_date = start_date_default
+                end_date = end_date_default
+        else:
+            start_date = start_date_default
+            end_date = end_date_default
+
+        if start_date > end_date:
+            start_date, end_date = end_date, start_date
+
+        start_datetime = timezone.make_aware(datetime.combine(start_date, datetime.min.time()))
+        end_datetime = timezone.make_aware(datetime.combine(end_date, datetime.max.time()))
+
+        # 0. Reporte de Valoración de Inventario (Stock actual)
+        stock_valuation = Product.objects.filter(
+            is_active=True,
+            is_service=False,
+            is_combo=False,
+            stock__gt=0
+        ).aggregate(
+            total_cost=Sum(F('stock') * F('average_cost'), output_field=DecimalField()),
+            total_sale_value=Sum(F('stock') * F('sale_price'), output_field=DecimalField())
+        )
+        
+        total_stock_cost = stock_valuation['total_cost'] or Decimal('0.00')
+        total_stock_sale = stock_valuation['total_sale_value'] or Decimal('0.00')
+        total_stock_profit = total_stock_sale - total_stock_cost
+
+        # Valoración de Stock en Tránsito
+        transit_valuation = Product.objects.filter(
+            is_active=True,
+            is_service=False,
+            is_combo=False,
+            incoming_stock__gt=0
+        ).aggregate(
+            total_transit_cost=Sum(F('incoming_stock') * F('average_cost'), output_field=DecimalField())
+        )
+        total_transit_cost = transit_valuation['total_transit_cost'] or Decimal('0.00')
+
+        # Indicadores globales de inventario
+        global_margin_percentage = Decimal('0.00')
+        if total_stock_sale > 0:
+            global_margin_percentage = (total_stock_profit / total_stock_sale) * Decimal('100.00')
+
+        gmroi = Decimal('0.00')
+        if total_stock_cost > 0:
+            gmroi = total_stock_profit / total_stock_cost
+
+        # 1. Top N Best-Selling & Most Profitable Products
+        base_query = QuoteItem.objects.filter(
+            quote__status__in=['paid', 'shipped'],
+            quote__created_at__gte=start_datetime,
+            quote__created_at__lte=end_datetime
+        )
+
+        top_selling_products = list(base_query.filter(
+            product__sale_price__gt=45000
+        ).values('product__name').annotate(
+            total_sold=Sum('quantity'),
+            total_profit=Sum(
+                (F('price_at_quote') - F('cost_at_quote')) * F('quantity'),
+                output_field=DecimalField()
+            )
+        ).order_by('-total_sold')[:TOP_N])
+
+        top_profit_products = list(base_query.values('product__name').annotate(
+            total_sold=Sum('quantity'),
+            total_profit=Sum(
+                (F('price_at_quote') - F('cost_at_quote')) * F('quantity'),
+                output_field=DecimalField()
+            )
+        ).order_by('-total_profit')[:TOP_N])
+
+        top_selling = [
+            {
+                'name': p['product__name'],
+                'total_sold': p['total_sold'],
+                'total_profit': float(p['total_profit'] or 0)
+            }
+            for p in top_selling_products
+        ]
+        top_profit = [
+            {
+                'name': p['product__name'],
+                'total_sold': p['total_sold'],
+                'total_profit': float(p['total_profit'] or 0)
+            }
+            for p in top_profit_products
+        ]
+
+        # 2. Total Sales & Category Sales por Mes
+        month_labels = []
+        temp_date = start_date.replace(day=1)
+        end_month_first_day = end_date.replace(day=1)
+
+        while temp_date <= end_month_first_day:
+            month_labels.append(temp_date.strftime("%b %Y"))
+            next_month = temp_date.month + 1
+            next_year = temp_date.year
+            if next_month > 12:
+                next_month = 1
+                next_year += 1
+            temp_date = temp_date.replace(year=next_year, month=next_month)
+
+        if not month_labels:
+            month_labels.append(start_date.strftime("%b %Y"))
+
+        sales_data_dict = {label: 0 for label in month_labels}
+        profit_data_dict = {label: 0 for label in month_labels}
+
+        cost_subquery = QuoteItem.objects.filter(
+            quote=OuterRef('pk')
+        ).values('quote').annotate(
+            total_cost=Sum(F('quantity') * F('cost_at_quote'), output_field=DecimalField())
+        ).values('total_cost')
+
+        sales_in_range = Quote.objects.filter(
+            status__in=['paid', 'shipped'],
+            created_at__gte=start_datetime,
+            created_at__lte=end_datetime
+        ).annotate(
+            month_year=TruncMonth('created_at'),
+            quote_cost=Subquery(cost_subquery, output_field=DecimalField())
+        ).values('month_year').annotate(
+            total_sales=Sum('total', output_field=DecimalField()),
+            total_cost=Sum('quote_cost', output_field=DecimalField())
+        )
+
+        for sale in sales_in_range:
+            if sale['month_year']:
+                label = sale['month_year'].strftime("%b %Y")
+                if label in sales_data_dict:
+                    sales_val = float(sale['total_sales'] or 0)
+                    cost_val = float(sale['total_cost'] or 0)
+                    sales_data_dict[label] = sales_val
+                    profit_data_dict[label] = sales_val - cost_val
+
+        sales_chart_data = {"labels": list(sales_data_dict.keys()), "data": list(sales_data_dict.values())}
+        profit_chart_data = {"labels": list(profit_data_dict.keys()), "data": list(profit_data_dict.values())}
+
+        # Ventas por Categoría por Mes
+        sales_by_cat_month = QuoteItem.objects.filter(
+            quote__status__in=['paid', 'shipped'],
+            quote__created_at__gte=start_datetime,
+            quote__created_at__lte=end_datetime
+        ).annotate(
+            month_year=TruncMonth('quote__created_at')
+        ).values(
+            'month_year', 'product__category__name'
+        ).annotate(total_sales=Sum(F('quantity') * F('price_at_quote'))).order_by('month_year')
+
+        all_categories = sorted(list(set(d['product__category__name'] for d in sales_by_cat_month if d.get('product__category__name'))))
+        category_sales_data = {cat_name: {m_label: 0 for m_label in month_labels} for cat_name in all_categories}
+
+        for item in sales_by_cat_month:
+            category_name = item.get('product__category__name')
+            if not category_name or not item['month_year']:
+                continue
+            month_label = item['month_year'].strftime("%b %Y")
+            if month_label in month_labels and category_name in category_sales_data:
+                category_sales_data[category_name][month_label] = float(item['total_sales'] or 0)
+
+        category_colors = [
+            'rgba(0, 128, 128, 0.7)',
+            'rgba(70, 130, 180, 0.7)',
+            'rgba(47, 79, 79, 0.7)',
+            'rgba(75, 0, 130, 0.7)',
+            'rgba(128, 0, 0, 0.7)',
+            'rgba(85, 107, 47, 0.7)',
+            'rgba(139, 69, 19, 0.7)',
+            'rgba(139, 0, 139, 0.7)',
+            'rgba(25, 25, 112, 0.7)',
+            'rgba(72, 61, 139, 0.7)'
+        ]
+        category_chart_datasets = []
+        for i, cat_name in enumerate(all_categories):
+            dataset = {
+                'label': cat_name,
+                'data': [category_sales_data[cat_name][m_label] for m_label in month_labels],
+                'backgroundColor': category_colors[i % len(category_colors)],
+            }
+            category_chart_datasets.append(dataset)
+
+        category_sales_chart_data = {
+            'labels': month_labels,
+            'datasets': category_chart_datasets
+        }
+
+        # 3. Tendencia Histórica de Valoración Diaria del Inventario
+        # Aseguramos el snapshot de hoy
+        DailyStockSnapshot.record_snapshot(current_time.date())
+
+        stock_snapshots = DailyStockSnapshot.objects.filter(
+            date__gte=start_date,
+            date__lte=end_date
+        ).order_by('date')
+
+        stock_trend_chart_data = {
+            'labels': [s.date.strftime('%d %b %y') for s in stock_snapshots],
+            'cost_data': [float(s.total_stock_cost) for s in stock_snapshots],
+            'sale_data': [float(s.total_stock_sale) for s in stock_snapshots],
+            'transit_data': [float(s.total_transit_cost) for s in stock_snapshots],
+            'profit_data': [float(s.total_stock_profit) for s in stock_snapshots],
+            'units_data': [s.total_units_stock for s in stock_snapshots],
+        }
+
+        period_total_sales = sum(sales_data_dict.values())
+        period_total_profit = sum(profit_data_dict.values())
+        period_profit_margin = (period_total_profit / period_total_sales * 100) if period_total_sales > 0 else 0
+
+        return Response({
+            'start_date': start_date.strftime('%Y-%m-%d'),
+            'end_date': end_date.strftime('%Y-%m-%d'),
+            'inventory_valuation': {
+                'total_stock_cost': float(total_stock_cost),
+                'total_transit_cost': float(total_transit_cost),
+                'total_stock_profit': float(total_stock_profit),
+                'total_stock_sale': float(total_stock_sale),
+                'global_margin_percentage': float(global_margin_percentage),
+                'gmroi': float(gmroi),
+            },
+            'period_summary': {
+                'total_sales': period_total_sales,
+                'total_profit': period_total_profit,
+                'margin_percentage': round(period_profit_margin, 2),
+            },
+            'top_selling_products': top_selling,
+            'top_profit_products': top_profit,
+            'sales_chart_data': sales_chart_data,
+            'profit_chart_data': profit_chart_data,
+            'category_sales_chart_data': category_sales_chart_data,
+            'stock_trend_chart_data': stock_trend_chart_data
+        })

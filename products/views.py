@@ -1,12 +1,20 @@
 from rest_framework import viewsets, generics, filters, permissions
-from .models import Category, Subcategory, Product, ProductImage, Tag, Brand
-from .serializers import CategorySerializer, SubcategorySerializer, ProductSerializer, ProductImageSerializer, TagSerializer, RelevantTagSerializer, RelevantBrandSerializer
+from .models import Category, Subcategory, Product, ProductImage, Tag, Brand, Supplier
+from .serializers import (
+    CategorySerializer, SubcategorySerializer, ProductSerializer, 
+    ProductImageSerializer, TagSerializer, RelevantTagSerializer, 
+    RelevantBrandSerializer, BrandSerializer, SupplierSerializer
+)
 from django_filters.rest_framework import DjangoFilterBackend
 from .filters import ProductFilter
 from django.db.models import Count, Q, Sum
 from rest_framework import views, response
+from rest_framework.response import Response
 from django.db.models import Case, When, Value, IntegerField
 from carts.models import QuoteItem
+from decimal import Decimal
+from django.db import transaction
+from inventory.models import StockEntry
 
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.filter(is_active=True)
@@ -28,21 +36,49 @@ class SubcategoryViewSet(viewsets.ModelViewSet):
 
 
 class TagViewSet(viewsets.ModelViewSet):
-    queryset = Tag.objects.all()
+    queryset = Tag.objects.all().order_by('name')
     serializer_class = TagSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['name']
+    ordering_fields = ['name']
+    pagination_class = None
 
-# class ProductViewSet(viewsets.ModelViewSet):
-#     queryset = Product.objects.all()
-#     serializer_class = ProductSerializer
-#     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-#     search_fields = ['name', 'description', 'category__name', 'subcategory__name', 'tags__name']
-#     ordering_fields = ['name', 'sale_price']
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.AllowAny()]
+        return [permissions.IsAdminUser()]
+
+class BrandViewSet(viewsets.ModelViewSet):
+    queryset = Brand.objects.all().order_by('name')
+    serializer_class = BrandSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['name']
+    ordering_fields = ['name']
+    pagination_class = None
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.AllowAny()]
+        return [permissions.IsAdminUser()]
+
+class SupplierViewSet(viewsets.ModelViewSet):
+    queryset = Supplier.objects.all().order_by('name')
+    serializer_class = SupplierSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['name']
+    ordering_fields = ['name']
+    pagination_class = None
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.AllowAny()]
+        return [permissions.IsAdminUser()]
 
 class ProductViewSet(viewsets.ModelViewSet):
     serializer_class = ProductSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter, DjangoFilterBackend]
     search_fields = ['name', 'description', 'category__name', 'subcategory__name', 'tags__name', 'brand__name']
-    ordering_fields = ['name', 'sale_price', 'created_at']
+    ordering_fields = ['name', 'sale_price', 'purchase_price', 'created_at', 'stock', 'incoming_stock', 'discount']
     # con este busco por el nombre de la categoría y subcategoría
     filterset_class = ProductFilter
     # filterset_fields = ['category', 'subcategory', 'tags']
@@ -190,9 +226,139 @@ class ProductViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(bestsellers_qs, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['post'], url_path='receive-stock')
+    def receive_stock(self, request, pk=None):
+        """
+        Recibe stock en tránsito para un producto específico (total o parcial).
+        Crea una StockEntry que actualiza el stock físico y recalcula el costo promedio.
+        """
+        product = self.get_object()
+        
+        try:
+            quantity = int(request.data.get('quantity', product.incoming_stock))
+        except (ValueError, TypeError):
+            return Response({'error': 'La cantidad debe ser un número entero válido.'}, status=400)
+            
+        if quantity <= 0:
+            return Response({'error': 'La cantidad a recibir debe ser mayor a 0.'}, status=400)
+            
+        if quantity > product.incoming_stock:
+            return Response({
+                'error': f'La cantidad a recibir ({quantity}) supera el stock en tránsito ({product.incoming_stock}).'
+            }, status=400)
+            
+        purchase_price = request.data.get('purchase_price')
+        if purchase_price is not None:
+            try:
+                purchase_price = Decimal(str(purchase_price))
+            except Exception:
+                purchase_price = product.purchase_price or Decimal('0.00')
+        else:
+            purchase_price = product.purchase_price or Decimal('0.00')
+            
+        notes = request.data.get('notes', 'Recepción de stock en tránsito desde Frontend')
+        
+        with transaction.atomic():
+            product.incoming_stock -= quantity
+            product.save(update_fields=['incoming_stock'])
+            
+            StockEntry.objects.create(
+                product=product,
+                quantity=quantity,
+                purchase_price=purchase_price,
+                notes=notes
+            )
+            
+        product.refresh_from_db()
+        return Response({
+            'message': f'Se recibieron {quantity} unidades de "{product.name}" en bodega exitosamente.',
+            'product_id': product.id,
+            'name': product.name,
+            'new_stock': product.stock,
+            'remaining_incoming': product.incoming_stock,
+            'average_cost': product.average_cost
+        })
+
+    @action(detail=False, methods=['post'], url_path='receive-multiple-stock')
+    def receive_multiple_stock(self, request):
+        """
+        Recibe stock en tránsito de múltiples productos en lote.
+        """
+        items = request.data.get('items', [])
+        if not items or not isinstance(items, list):
+            return Response({'error': 'Se requiere una lista de productos en el campo "items".'}, status=400)
+            
+        received_products = []
+        errors = []
+        
+        with transaction.atomic():
+            for item in items:
+                product_id = item.get('product_id')
+                try:
+                    product = Product.objects.select_for_update().get(pk=product_id)
+                except Product.DoesNotExist:
+                    errors.append(f'Producto #{product_id} no existe.')
+                    continue
+                    
+                try:
+                    qty = int(item.get('quantity', product.incoming_stock))
+                except (ValueError, TypeError):
+                    errors.append(f'{product.name}: Cantidad inválida.')
+                    continue
+                    
+                if qty <= 0:
+                    continue
+                    
+                if qty > product.incoming_stock:
+                    errors.append(f'{product.name}: Intentaste recibir {qty}, pero solo hay {product.incoming_stock} pendientes.')
+                    continue
+                    
+                purchase_price = item.get('purchase_price')
+                if purchase_price is not None:
+                    try:
+                        purchase_price = Decimal(str(purchase_price))
+                    except Exception:
+                        purchase_price = product.purchase_price or Decimal('0.00')
+                else:
+                    purchase_price = product.purchase_price or Decimal('0.00')
+                    
+                product.incoming_stock -= qty
+                product.save(update_fields=['incoming_stock'])
+                
+                StockEntry.objects.create(
+                    product=product,
+                    quantity=qty,
+                    purchase_price=purchase_price,
+                    notes='Recepción masiva de stock en tránsito'
+                )
+                product.refresh_from_db()
+                received_products.append({
+                    'id': product.id,
+                    'name': product.name,
+                    'received_qty': qty,
+                    'new_stock': product.stock,
+                    'remaining_incoming': product.incoming_stock
+                })
+                
+        if errors and not received_products:
+            return Response({'error': ' | '.join(errors)}, status=400)
+            
+        return Response({
+            'message': f'Se recibió stock para {len(received_products)} productos exitosamente.',
+            'received_products': received_products,
+            'warnings': errors
+        })
+
 class ProductImageViewSet(viewsets.ModelViewSet):
     queryset = ProductImage.objects.all()
     serializer_class = ProductImageSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['product']
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.AllowAny()]
+        return [permissions.IsAdminUser()]
     
 
 

@@ -2,7 +2,7 @@ from django.contrib import admin
 from django import forms
 from django.urls import path
 from django.http import JsonResponse
-from .models import StockEntry
+from .models import StockEntry, DailyStockSnapshot
 from products.models import Product
 
 class StockEntryAdminForm(forms.ModelForm):
@@ -65,3 +65,12 @@ class StockEntryAdmin(admin.ModelAdmin):
             return JsonResponse({'purchase_price': purchase_price, 'sale_price': sale_price})
         except Product.DoesNotExist:
             return JsonResponse({'error': 'Product not found'}, status=404)
+
+
+@admin.register(DailyStockSnapshot)
+class DailyStockSnapshotAdmin(admin.ModelAdmin):
+    list_display = ('date', 'total_stock_cost', 'total_stock_sale', 'total_stock_profit', 'total_transit_cost', 'total_units_stock', 'total_units_transit')
+    list_filter = ('date',)
+    date_hierarchy = 'date'
+    ordering = ('-date',)
+    readonly_fields = ('date', 'total_stock_cost', 'total_stock_sale', 'total_stock_profit', 'total_transit_cost', 'total_units_stock', 'total_units_transit', 'created_at', 'updated_at')

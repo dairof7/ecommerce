@@ -114,6 +114,7 @@ class Quote(models.Model):
     customer_email = models.EmailField("Email", blank=True)
     customer_document = models.CharField("Documento", max_length=30, blank=True)
     customer_phone = models.CharField("Teléfono", max_length=30, blank=True)
+    customer_address = models.CharField("Dirección", max_length=255, blank=True, default='')
     coupon = models.ForeignKey('Coupon', on_delete=models.SET_NULL, null=True, blank=True, related_name='quotes_used', verbose_name="Cupón Aplicado")
     coupon_discount = models.DecimalField("Descuento por Cupón", max_digits=12, decimal_places=2, default=Decimal('0.00'))
     cart = models.ForeignKey(Cart, on_delete=models.SET_NULL, null=True, blank=True) # Usar SET_NULL si el carrito se elimina
@@ -133,11 +134,22 @@ class Quote(models.Model):
     )
     # El total se calculará y almacenará al crear la cotización
     total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    # Abono o pago inicial para separar productos
+    paid_amount = models.DecimalField("Abono / Pago Inicial", max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    # Observaciones o notas especiales sobre la venta/cotización
+    notes = models.TextField("Observaciones", blank=True, default='')
 
     class Meta: # Añadir Meta si no la tienes
         verbose_name = "Cotización / Pedido"
         verbose_name_plural = "Cotizaciones / Pedidos"
         ordering = ['-created_at']
+
+    @property
+    def pending_balance(self) -> Decimal:
+        """Calcula el saldo pendiente (total - abono)."""
+        abono = self.paid_amount or Decimal('0.00')
+        saldo = self.total - abono
+        return saldo if saldo > Decimal('0.00') else Decimal('0.00')
 
     def get_customer_identifier(self):
         if self.customer_name:

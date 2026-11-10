@@ -15,6 +15,12 @@
         <h3>Cliente:</h3>
         {# Usar el diccionario customer_info #}
         <strong>Nombre:</strong> {{ customer_info.name }}<br>
+        {% if customer_info.document and customer_info.document != 'No especificado' %}
+        <strong>Documento:</strong> {{ customer_info.document }}<br>
+        {% endif %}
+        {% if customer_info.address and customer_info.address != 'No especificada' %}
+        <strong>Dirección:</strong> {{ customer_info.address }}<br>
+        {% endif %}
         <strong>Email:</strong> {{ customer_info.email }}<br>
         <strong>Teléfono:</strong> {{ customer_info.phone }}
     </div>
@@ -42,7 +48,26 @@
     {% endif %}
 {% endblock %}
 
+{% block totals_after_grand %}
+    {% if document.paid_amount > 0 %}
+    <tr style="border-top: 1px dashed #bbb;">
+        <td><strong>Abono / Pago Inicial:</strong></td>
+        <td class="text-right"><strong>{{ document.paid_amount|currency }}</strong></td>
+    </tr>
+    <tr style="color: #b91c1c; font-size: 1.1em; background-color: #fff1f2;">
+        <td><strong>SALDO PENDIENTE:</strong></td>
+        <td class="text-right"><strong>{{ document.pending_balance|currency }}</strong></td>
+    </tr>
+    {% endif %}
+{% endblock %}
+
 {% block footer_notes %}
+    {% if document.notes %}
+    <div class="highlight-box" style="margin-top: 10px; border-left: 4px solid #003f69; background-color: #f8fafc; padding: 10px;">
+        <strong style="color: #003f69;">Observaciones / Notas del Pedido:</strong><br>
+        <span>{{ document.notes|linebreaksbr }}</span>
+    </div>
+    {% endif %}
     <div class="highlight-box">
         <strong>Próximos Pasos:</strong> Para confirmar tu pedido y coordinar el pago, contáctanos por WhatsApp al {{ shop_info.telefono }}.
     </div>

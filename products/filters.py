@@ -40,8 +40,14 @@ class ProductFilter(django_filters.FilterSet):
     )
     # Si quieres que acepte ?tags_name=FullHD,Portatil, necesitarías un CharFilter y parsearlo
 
+    is_active = django_filters.BooleanFilter(field_name='is_active')
+    is_service = django_filters.BooleanFilter(field_name='is_service')
+    is_featured = django_filters.BooleanFilter(field_name='is_featured')
+    is_combo = django_filters.BooleanFilter(field_name='is_combo')
+    supplier = django_filters.NumberFilter(field_name='supplier__id')
+
     class Meta:
         model = Product
         # Los campos definidos arriba tienen precedencia sobre estos.
         # Estos son para filtros de igualdad exactos si no se definen explícitamente arriba.
-        fields = ['category', 'subcategory'] # 'tags' se maneja arriba con más control
+        fields = ['category', 'subcategory', 'is_active', 'is_service', 'is_featured', 'is_combo', 'supplier'] # 'tags' se maneja arriba con más control

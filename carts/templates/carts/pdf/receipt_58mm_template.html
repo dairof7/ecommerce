@@ -112,7 +112,23 @@
                 <td><strong>TOTAL:</strong></td>
                 <td class="text-right"><strong>${{ document.total|floatformat:0 }}</strong></td>
             </tr>
+            {% if document.paid_amount > 0 %}
+            <tr>
+                <td>Abono Inicial:</td>
+                <td class="text-right">${{ document.paid_amount|floatformat:0 }}</td>
+            </tr>
+            <tr>
+                <td><strong>SALDO PENDIENTE:</strong></td>
+                <td class="text-right"><strong>${{ document.pending_balance|floatformat:0 }}</strong></td>
+            </tr>
+            {% endif %}
         </table>
+
+        {% if document.notes %}
+        <div class="divider"></div>
+        <p style="font-size: 7.5pt; font-weight: bold; margin-bottom: 2px;">Observaciones:</p>
+        <p style="font-size: 7.5pt; word-break: break-word;">{{ document.notes }}</p>
+        {% endif %}
 
         <div class="divider"></div>
         <div class="footer">

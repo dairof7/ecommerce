@@ -40,11 +40,11 @@ class QuoteItemInline(admin.TabularInline):
         return False
 @admin.register(Quote)
 class QuoteAdmin(admin.ModelAdmin):
-    list_display = ('id', 'user', 'customer_name', 'customer_email', 'status', 'total', 'profit', 'created_at', 'receipt_actions', 'quote_actions')
+    list_display = ('id', 'user', 'customer_name', 'customer_email', 'status', 'total', 'paid_amount', 'pending_balance', 'profit', 'created_at', 'receipt_actions', 'quote_actions')
     list_filter = ('status', 'created_at', 'user')
     search_fields = ('user__username', 'customer_name', 'customer_email', 'coupon__code', 'items__product__name')
     date_hierarchy = 'created_at'
-    readonly_fields = ('user', 'cart', 'created_at', 'updated_at', 'total', 'coupon_discount')
+    readonly_fields = ('user', 'cart', 'created_at', 'updated_at', 'total', 'coupon_discount', 'pending_balance')
     inlines = [QuoteItemInline] # Mostrar los items de la cotización
     
     # Añadimos el campo a la tupla de ordenación para evitar errores
@@ -52,7 +52,7 @@ class QuoteAdmin(admin.ModelAdmin):
 
     fieldsets = (
         (None, {
-            'fields': ('user', 'customer_name', 'customer_email', 'customer_document', 'customer_phone', 'cart', 'created_at', 'updated_at', 'status', 'coupon', 'coupon_discount', 'total')
+            'fields': ('user', 'customer_name', 'customer_email', 'customer_document', 'customer_phone', 'customer_address', 'cart', 'created_at', 'updated_at', 'status', 'coupon', 'coupon_discount', 'total', 'paid_amount', 'pending_balance', 'notes')
         }),
         # Los items se mostrarán a través del inline
     )
@@ -91,7 +91,11 @@ class QuoteAdmin(admin.ModelAdmin):
 
         # --- LÓGICA DE ALTURA DINÁMICA ---
         # 1. Definimos una altura base para cabecera, footer y totales (ajustar según tu diseño)
-        base_height_mm = 90 
+        base_height_mm = 90
+        if quote.paid_amount and quote.paid_amount > 0:
+            base_height_mm += 14
+        if quote.notes:
+            base_height_mm += 20 
         
         # 2. Definimos altura estimada por ítem (considerando saltos de línea en descripciones largas)
         item_height_mm = 12 
@@ -348,16 +352,25 @@ class QuoteAdmin(admin.ModelAdmin):
             quote__status__in=['paid', 'shipped'],
             quote__created_at__gte=start_datetime,
             quote__created_at__lte=end_datetime
+        )
+
+        top_selling_products = base_query.filter(
+            product__sale_price__gt=45000
         ).values('product__name').annotate(
             total_sold=Sum('quantity'),
             total_profit=Sum(
                 (F('price_at_quote') - F('cost_at_quote')) * F('quantity'),
                 output_field=DecimalField()
             )
-        )
+        ).order_by('-total_sold')[:TOP_N]
 
-        top_selling_products = base_query.order_by('-total_sold')[:TOP_N]
-        top_profit_products = base_query.order_by('-total_profit')[:TOP_N]
+        top_profit_products = base_query.values('product__name').annotate(
+            total_sold=Sum('quantity'),
+            total_profit=Sum(
+                (F('price_at_quote') - F('cost_at_quote')) * F('quantity'),
+                output_field=DecimalField()
+            )
+        ).order_by('-total_profit')[:TOP_N]
 
         # 2. Total Sales & Category Sales
         # --- Generate labels and date range ---

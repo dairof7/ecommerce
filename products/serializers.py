@@ -1,6 +1,6 @@
 from decimal import Decimal
 from rest_framework import serializers
-from .models import Category, Subcategory, Product, ProductImage, Tag, Brand
+from .models import Category, Subcategory, Product, ProductImage, Tag, Brand, Supplier
 
 
 
@@ -47,6 +47,16 @@ class RelevantTagSerializer(TagSerializer): # Hereda de TagSerializer
     class Meta(TagSerializer.Meta): # Hereda Meta de TagSerializer
         fields = TagSerializer.Meta.fields + ['product_count']
 
+class BrandSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Brand
+        fields = ['id', 'name']
+
+class SupplierSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Supplier
+        fields = ['id', 'name']
+
 class RelevantBrandSerializer(serializers.ModelSerializer):
     product_count = serializers.IntegerField(read_only=True)
 
@@ -55,19 +65,28 @@ class RelevantBrandSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'product_count']
 
 class ProductImageSerializer(serializers.ModelSerializer):
+    product_id = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.all(), source='product', write_only=True, required=False
+    )
+
     class Meta:
         model = ProductImage
-        fields = ['id', 'image', 'alt_text']
+        fields = ['id', 'image', 'alt_text', 'product', 'product_id']
+        read_only_fields = ['product']
 
 class ProductSerializer(serializers.ModelSerializer):
     # Campos para mostrar (read-only) con serializadores anidados
     category = CategorySerializer(read_only=True) # Para mostrar el objeto categoría completo
     subcategory = SubcategorySerializer(read_only=True) # Para mostrar el objeto subcategoría completo
+    brand = BrandSerializer(read_only=True)
+    supplier = SupplierSerializer(read_only=True)
     images = ProductImageSerializer(many=True, read_only=True)
     tags = TagSerializer(many=True, read_only=True) # Para mostrar los objetos tag completos
 
+    sale_price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    purchase_price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True)
+    average_cost = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     final_sale_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
-    # Opcional: mostrar el precio original y el porcentaje de descuento aplicado
     original_sale_price = serializers.DecimalField(source='sale_price', max_digits=10, decimal_places=2, read_only=True)
     applied_discount_percentage = serializers.SerializerMethodField(read_only=True)
     
@@ -75,46 +94,50 @@ class ProductSerializer(serializers.ModelSerializer):
     discount_amount_saved = serializers.SerializerMethodField()
     has_discount = serializers.SerializerMethodField()
 
-    brand_name = serializers.CharField(source='brand.name', read_only=True)
-
-
+    brand_name = serializers.CharField(source='brand.name', read_only=True, default='', allow_null=True)
 
     # Campos para la entrada (write-only o para creación/actualización)
-    # Estos aceptarán IDs al crear/actualizar
     category_id = serializers.PrimaryKeyRelatedField(
         queryset=Category.objects.all(), source='category', write_only=True
     )
     subcategory_id = serializers.PrimaryKeyRelatedField(
         queryset=Subcategory.objects.all(), source='subcategory', write_only=True
     )
+    brand_id = serializers.PrimaryKeyRelatedField(
+        queryset=Brand.objects.all(), source='brand', write_only=True, required=False, allow_null=True
+    )
+    supplier_id = serializers.PrimaryKeyRelatedField(
+        queryset=Supplier.objects.all(), source='supplier', write_only=True, required=False, allow_null=True
+    )
     tag_ids = serializers.PrimaryKeyRelatedField(
         queryset=Tag.objects.all(), source='tags', many=True, write_only=True, required=False
     )
-    # 'source' le dice a DRF a qué campo del modelo mapear este campo del serializador.
-    # 'write_only=True' significa que estos campos solo se usan para entrada, no se mostrarán en la salida.
-    # 'required=False' para tag_ids si los tags son opcionales.
 
     class Meta:
         model = Product
         fields = [
             'id', 'name', 'description',
-            'original_sale_price',      # Precio antes de cualquier descuento
-            'discount',               # El campo 'discount' base del producto, podrías incluirlo si es relevante para el front
-            'applied_discount_percentage', # El % total de descuento que se está aplicando
-            'discount_amount_saved',    # El monto ahorrado
-            'final_sale_price',         # Precio final a pagar
-            'has_discount',             # Booleano para UI
+            'sale_price',
+            'original_sale_price',
+            'purchase_price',
+            'average_cost',
+            'discount',
+            'applied_discount_percentage',
+            'discount_amount_saved',
+            'final_sale_price',
+            'has_discount',
             'stock',
-            'incoming_stock',           # Stock en transito
+            'incoming_stock',
             'is_active',
             'is_service',
+            'is_combo',
             'is_featured',
             'created_at', 'updated_at',
-            'category', 'subcategory', 'images', 'tags',
+            'category', 'subcategory', 'brand', 'supplier', 'images', 'tags',
             'brand_name',
-            'category_id', 'subcategory_id', 'tag_ids'
+            'category_id', 'subcategory_id', 'brand_id', 'supplier_id', 'tag_ids'
         ]
-        read_only_fields = ('stock', 'incoming_stock', 'created_at', 'updated_at', 'brand_name')
+        read_only_fields = ('created_at', 'updated_at', 'brand_name')
 
     def get_applied_discount_percentage(self, obj) -> Decimal:
         # Esta lógica debe ser consistente con cómo se calcula final_sale_price en el modelo

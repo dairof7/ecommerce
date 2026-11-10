@@ -169,6 +169,7 @@
                 <td>TOTAL:</td>
                 <td class="text-right">{{ document.total|currency }}</td>
             </tr>
+            {% block totals_after_grand %}{% endblock %}
         </table>
     </div>
 

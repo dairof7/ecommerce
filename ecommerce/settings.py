@@ -70,6 +70,13 @@ CELERY_TIMEZONE = 'America/Bogota' # Ajusta a tu zona horaria
 
 from celery.schedules import crontab
 
+CELERY_BEAT_SCHEDULE = {
+    'record-daily-stock-snapshot': {
+        'task': 'inventory.tasks.take_daily_stock_snapshot',
+        'schedule': crontab(hour=23, minute=59),  # Registra valoración cada noche a las 23:59
+    },
+}
+
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',

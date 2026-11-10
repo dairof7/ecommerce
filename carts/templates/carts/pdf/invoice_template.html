@@ -15,6 +15,9 @@
         <strong>Nombre:</strong> {{ customer_info.name }}<br>
         <strong>Documento:</strong> {{ customer_info.document }}<br>
         <strong>Dirección:</strong> {{ customer_info.address }}<br>
+        {% if customer_info.phone and customer_info.phone != 'No especificado' %}
+        <strong>Teléfono:</strong> {{ customer_info.phone }}<br>
+        {% endif %}
         <strong>Email:</strong> {{ customer_info.email }}
     </div>
     <div class="info-box">
@@ -30,7 +33,7 @@
 {% block totals_extra_rows %}
     {# Calculamos el subtotal como la suma del total final y el descuento aplicado #}
     <tr>
-        <td>Subtotal2:</td>
+        <td>Subtotal:</td>
         <td class="text-right">{{ document.total|add:document.coupon_discount|currency }}</td>
     </tr>
     {% if document.coupon %}
@@ -49,7 +52,26 @@
     </tr>
 {% endblock %}
 
+{% block totals_after_grand %}
+    {% if document.paid_amount > 0 %}
+    <tr style="border-top: 1px dashed #bbb;">
+        <td><strong>Abono / Pago Inicial:</strong></td>
+        <td class="text-right"><strong>{{ document.paid_amount|currency }}</strong></td>
+    </tr>
+    <tr style="color: #b91c1c; font-size: 1.1em; background-color: #fff1f2;">
+        <td><strong>SALDO PENDIENTE:</strong></td>
+        <td class="text-right"><strong>{{ document.pending_balance|currency }}</strong></td>
+    </tr>
+    {% endif %}
+{% endblock %}
+
 {% block footer_notes %}
+    {% if document.notes %}
+    <div class="highlight-box" style="margin-top: 10px; border-left: 4px solid #003f69; background-color: #f8fafc; padding: 10px;">
+        <strong style="color: #003f69;">Observaciones / Notas del Pedido:</strong><br>
+        <span>{{ document.notes|linebreaksbr }}</span>
+    </div>
+    {% endif %}
     <div class="highlight-box">
         <strong>Método de pago:</strong> A convenir (Confirmado por WhatsApp)
     </div>
